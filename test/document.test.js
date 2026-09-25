@@ -49,3 +49,19 @@ test('image wrapping, alignment, width and font changes survive sanitization',()
   assert.match(normalized.html,/font-family:Georgia/);
   assert.equal(normalize(normalized.html).html,normalized.html);
 });
+test('figure with text overlay, nbsp and typography signatures survive sanitization',()=>{
+  const html='<figure id="fig" class="image-figure"><img id="pic" class="figure-image" src="/books/bees/img/frontispiece.png" data-align="left" style="width:79.19%" alt="Гравюра"><div id="over" class="image-overlay" style="margin-left:45%;margin-top:52%;width:55%"><h1 id="t" data-typo="1abc">ЧАСТЬ\u00A0I.</h1><p id="p" data-typo="zz9" style="text-align:center">Мед в\u00A0улей</p></div></figure>';
+  const normalized=normalize(html);
+  assert.equal(normalized.root.querySelector('.image-overlay').getAttribute('style'),'margin-left:45%;margin-top:52%;width:55%');
+  assert.equal(normalized.root.querySelector('img').getAttribute('style'),'width:79.19%');
+  assert.equal(normalized.root.querySelector('#p').getAttribute('data-typo'),'zz9');
+  assert.equal(normalized.root.querySelector('#p').textContent,'Мед в\u00A0улей');
+  assert.equal(normalize(normalized.html).html,normalized.html);
+  assert.doesNotMatch(normalize('<div class="image-overlay" style="margin-top:900%;margin-left:-5%">x</div>').html,/900|-5/);
+});
+test('notes match quotes regardless of non-breaking spaces',()=>{
+  const root=parseFragment('<p id="a">Мед в\u00A0улей и\u00A0воск</p>');
+  assert.equal(resolveNote(root,{blockId:'a',start:4,quote:'в улей'}).orphan,false);
+  assert.equal(resolveNote(root,{blockId:'a',start:0,quote:'и воск'}).start,11);
+  assert.equal(resolveNote(parseFragment('<p id="a">Мед в улей</p>'),{blockId:'a',start:4,quote:'в\u00A0улей'}).orphan,false);
+});

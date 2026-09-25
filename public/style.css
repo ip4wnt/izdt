@@ -43,6 +43,19 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 [data-theme=dark] .book .divider-short{filter:invert(.8)}
 .book .divider-long{width:18.38rem;margin:1.65rem 0 1.2rem}
 .book img:not(.frontispiece){max-width:100%;height:auto}
+/* Картинка с текстом: одна ячейка сетки, картинка и плашка лежат в ней вместе; проценты плашки считаются от ширины блока */
+.book .image-figure{display:grid;grid-template-columns:100%;margin:0 0 2rem;clear:both;position:relative}
+.book .image-figure>img,.book .image-figure>.image-shell.figure-image{grid-area:1/1;display:block;width:100%;max-width:100%;height:auto;justify-self:start;margin:0;float:none;mix-blend-mode:multiply}
+.book .image-figure>[data-align=center]{justify-self:center}
+.book .image-figure>[data-align=right]{justify-self:end}
+[data-theme=dark] .book .image-figure>img,[data-theme=dark] .book .image-figure>.image-shell.figure-image{filter:invert(.87);mix-blend-mode:screen}
+.book .image-overlay{grid-area:1/1;align-self:start;justify-self:start;min-width:0;text-align:center;position:relative;z-index:1;box-sizing:border-box}
+.book .image-overlay p{text-indent:0}
+.editing .image-overlay{outline:1px dashed #a69b79;outline-offset:.4rem}
+.overlay-grip,.overlay-resize{display:none;position:absolute;background:#76602d;border:2px solid var(--paper);z-index:2;box-sizing:border-box}
+.overlay-grip{left:-1.6rem;top:-.4rem;width:1.2rem;height:2.2rem;cursor:move;border-radius:.2rem}
+.overlay-resize{right:-.9rem;top:calc(50% - .8rem);width:1rem;height:1.6rem;cursor:ew-resize}
+.editing .overlay-grip,.editing .overlay-resize{display:block}
 .book .wrap-left{float:left;width:45%;margin:.6rem 2rem 1rem 0}
 .book .wrap-right{float:right;width:45%;margin:.6rem 0 1rem 2rem}
 .book .wrap-block{display:block;clear:both;max-width:100%;margin:1.5rem auto}
@@ -112,7 +125,8 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 #save-status.error{color:#a92d20}
 .image-controls{align-items:flex-end;color:var(--muted)}
 .image-controls.has-image{color:var(--ink)}
-#image-selection-label{align-self:center;font-size:1.1rem;min-width:12rem}
+#image-selection-label,.overlay-label{align-self:center;font-size:1.1rem;min-width:12rem}
+.overlay-controls{color:var(--ink)}
 .image-alt-label{flex:1;min-width:12rem;max-width:23rem}
 .image-alt-label input{width:100%}
 .editing #reading-stage{padding-top:var(--toolbar-height,16rem)}

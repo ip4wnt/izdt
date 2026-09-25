@@ -40,7 +40,8 @@ export function pageHTML(book, base='') {
 <div class="ribbon-group insert-controls">
 <button id="add-image" title="Вставить изображение из файла" aria-label="Вставить изображение">${icon('image')}<span>Изображение</span></button>
 <button id="short-divider" title="Короткий разделитель" aria-label="Короткий разделитель">―<span>Короткая линия</span></button>
-<button id="long-divider" title="Длинный разделитель" aria-label="Длинный разделитель">──<span>Длинная линия</span></button></div>
+<button id="long-divider" title="Длинный разделитель" aria-label="Длинный разделитель">──<span>Длинная линия</span></button>
+<button id="typography-all" title="Расставить неразрывные пробелы во всей книге: после предлогов и союзов, между цифрами, перед тире" aria-label="Проверить типографику всей книги">␣<span>Типографика книги</span></button></div>
 </div>
 <div id="image-tools" class="ribbon-row image-controls">
 <span id="image-selection-label">Выберите изображение</span>
@@ -48,8 +49,15 @@ export function pageHTML(book, base='') {
 <label>Положение<select id="image-align" aria-label="Положение изображения" disabled><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label>
 <label>Ширина · %<input id="image-width" aria-label="Ширина изображения" type="number" min="5" max="100" step="5" disabled></label>
 <label class="image-alt-label">Описание<input id="image-alt" aria-label="Описание изображения" type="text" maxlength="500" disabled></label>
-<button id="detach-cover" title="Превратить титульную композицию в обычные блоки текста и картинку" hidden>Обычная картинка</button>
+<button id="figure-text" title="Положить текст поверх картинки: плашку можно перетаскивать и менять по ширине" hidden>Текст на картинке</button>
 <button id="delete-image" title="Удалить выбранное изображение" aria-label="Удалить изображение" disabled>${icon('x')}</button>
+</div>
+<div id="overlay-tools" class="ribbon-row overlay-controls" hidden>
+<span class="overlay-label">Текст на картинке</span>
+<label>Слева · %<input id="overlay-x" aria-label="Отступ плашки слева" type="number" min="0" max="90" step="1"></label>
+<label>Сверху · % ширины<input id="overlay-y" aria-label="Отступ плашки сверху" type="number" min="0" max="300" step="1"></label>
+<label>Ширина · %<input id="overlay-width" aria-label="Ширина плашки" type="number" min="10" max="100" step="1"></label>
+<button id="detach-overlay" title="Снять текст с картинки: абзацы встанут под ней обычным текстом">Снять текст с картинки</button>
 </div></div>
 <main id="reading-stage"><article id="book" class="book" spellcheck="false" aria-label="Текст книги">${book.html}</article>
 <footer class="colophon"><svg viewBox="0 0 100 24" width="76" height="24" aria-label="IZDT" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h12M9 3v18M3 21h12M23 3h19L23 21h19M51 3v18h7c15 0 15-18 0-18zM78 3h21M88.5 3v18"/></svg><p>Подготовлено издательством IZDT.RU в 2026 году<br>по тексту издания 1907 года.</p></footer></main>
@@ -57,7 +65,7 @@ export function pageHTML(book, base='') {
 <button id="selection-note" class="selection-note" hidden>${icon('pencil-line')} В заметки</button>
 <div id="notice" class="notice" role="status" hidden></div>
 <input type="file" id="image-input" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-<dialog id="help"><button class="dialog-close" aria-label="Закрыть">${icon('x')}</button><h2>IZDT / Чтение и редактура</h2><p>Выделите текст, чтобы сохранить цитату в заметки.</p><dl><dt>E / У</dt><dd>Редактор. Esc: сохранить и выйти</dd><dt>B / И</dt><dd>Заметки</dd><dt>C / С</dt><dd>Оглавление</dd><dt>Ctrl + I</dt><dd>Курсив в редакторе</dd><dt>Ctrl + V</dt><dd>Вставка текста или изображения</dd><dt>Ctrl + S</dt><dd>Сохранить книгу</dd></dl><p>Версия для настольного браузера. ${book.sharedData?'Заметки и закладка общие: сохраняются в папке книги и синхронизируются командами Git.':'Заметки сохраняются на сервере, закладка хранится в этом браузере.'}</p></dialog>
+<dialog id="help"><button class="dialog-close" aria-label="Закрыть">${icon('x')}</button><h2>IZDT / Чтение и редактура</h2><p>Выделите текст, чтобы сохранить цитату в заметки.</p><dl><dt>E / У</dt><dd>Редактор. Esc: сохранить и выйти</dd><dt>B / И</dt><dd>Заметки</dd><dt>C / С</dt><dd>Оглавление</dd><dt>Ctrl + I</dt><dd>Курсив в редакторе</dd><dt>Ctrl + V</dt><dd>Вставка текста или изображения</dd><dt>Ctrl + S</dt><dd>Сохранить книгу</dd></dl><p>Редактор сам заменяет пробелы на неразрывные в изменённых абзацах: после предлогов и союзов, между цифрами, перед единицами измерения и тире. Кнопка «Типографика книги» проверяет весь текст.</p><p>Версия для настольного браузера. ${book.sharedData?'Заметки и закладка общие: сохраняются в папке книги и синхронизируются командами Git.':'Заметки сохраняются на сервере, закладка хранится в этом браузере.'}</p></dialog>
 <script id="initial-state" type="application/json">${JSON.stringify({title:book.title,revision:book.revision,toc:book.toc,overrides:book.overrides,notes:book.notes||[],sharedData:book.sharedData||false,apiBase:base}).replace(/</g,'\\u003c')}</script>
 <script type="module" src="./js/app.js"></script></body></html>`;
 }

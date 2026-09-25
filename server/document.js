@@ -11,15 +11,16 @@ export function normalize(html) {
   const clean = sanitize(html, {
     allowedTags: ['div','section','header','h1','h2','h3','p','span','em','i','strong','b','u','s','br','hr','img','figure','figcaption','blockquote','ul','ol','li','a'],
     allowedAttributes: {
-      '*':['id','class','style','data-style'],
+      '*':['id','class','style','data-style','data-typo'],
       img:['src','alt','width','height','data-align'], a:['href','title']
     },
-    allowedClasses: {'*':['opening','frontispiece','opening-titles','paragraph','small','signature','divider-short','divider-long','wrap-left','wrap-right','wrap-block','wrap-inline','book-image']},
+    allowedClasses: {'*':['opening','frontispiece','opening-titles','paragraph','small','signature','divider-short','divider-long','wrap-left','wrap-right','wrap-block','wrap-inline','book-image','image-figure','figure-image','image-overlay']},
     allowedStyles: {'*':{
       'font-size':rem, 'line-height':[/^\d(?:\.\d{1,4})?$/, ...rem],
       'text-indent':rem, 'font-family':[/^["']?(?:TT Marxiana|Old Standard TT|Akzidenz-Grotesk Pro|Roboto Condensed|Georgia|Arial|serif|sans-serif)["']?$/],
       'text-align':[/^(left|right|center|justify)$/], 'font-style':[/^(normal|italic)$/],
-      'font-weight':[/^(normal|bold|400|700)$/], 'width':[/^(?:[1-9]\d?|100)%$/]
+      'font-weight':[/^(normal|bold|400|700)$/], 'width':[/^(?:[1-9]\d?(?:\.\d{1,2})?|100)%$/],
+      'margin-left':[/^(?:\d{1,2}|100)%$/], 'margin-top':[/^(?:\d{1,2}|[12]\d{2}|300)%$/]
     }},
     allowedSchemes:['https','http','mailto'],
     transformTags: {
@@ -41,11 +42,13 @@ export function normalize(html) {
 export function resolveNote(root, note) {
   const block = root.querySelector(`[id="${note.blockId}"]`);
   if (!block) return {...note, orphan:true};
-  const text = block.textContent;
+  // Неразрывные и обычные пробелы считаются равными: типографика редактора не должна терять заметки.
+  const plain = s => s.replace(/\u00A0/g, ' ');
+  const text = plain(block.textContent), quote = plain(note.quote);
   let start = note.start;
-  if (text.slice(start, start + note.quote.length) !== note.quote) {
-    const at = text.indexOf(note.quote);
-    if (at < 0 || text.indexOf(note.quote, at + 1) >= 0) return {...note, orphan:true};
+  if (text.slice(start, start + quote.length) !== quote) {
+    const at = text.indexOf(quote);
+    if (at < 0 || text.indexOf(quote, at + 1) >= 0) return {...note, orphan:true};
     start = at;
   }
   return {...note, start, end:start + note.quote.length, ...sectionFor(root, note.blockId), orphan:false};

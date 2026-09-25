@@ -46,7 +46,7 @@ try{
   async function assertOpening(){
     const boxes=await page.evaluate(()=>{
       const b=s=>{const r=document.querySelector(s).getBoundingClientRect();return {top:r.top,bottom:r.bottom};};
-      return {opening:b('.opening'),titles:b('.opening-titles'),img:b('.frontispiece'),body:b('#products')};
+      return {opening:b('.opening, .image-figure'),titles:b('.opening-titles, .image-overlay'),img:b('.frontispiece, .figure-image'),body:b('#products')};
     });
     assert.ok(boxes.body.top>=Math.max(boxes.titles.bottom,boxes.img.bottom)-1,JSON.stringify(boxes));
   }
@@ -55,7 +55,7 @@ try{
   async function readerLayout(){
     return page.evaluate(()=>{
       const root=document.querySelector('#book');
-      const elements=['#book','#part-one','#general','#preliminary','#honey','.divider-short','.frontispiece'];
+      const elements=['#book','#part-one','#general','#preliminary','#honey','.divider-short','.frontispiece, .figure-image'];
       return {className:root.className,label:root.getAttribute('aria-label'),spellcheck:root.getAttribute('spellcheck'),
         elements:elements.map(selector=>{
           const el=document.querySelector(selector),style=getComputedStyle(el),rect=el.getBoundingClientRect();
@@ -162,9 +162,29 @@ try{
     await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
   });
   await page.keyboard.press('Control+v');
-  await page.waitForFunction(()=>document.querySelectorAll('.image-shell').length===2);
+  await page.waitForFunction(()=>document.querySelectorAll('.image-shell:not(.figure-image)').length===2);
   pass('actual PNG clipboard paste inserts a selectable image');
+  // Typography: only edited blocks get non-breaking spaces; untouched blocks keep plain spaces and no signature.
+  await clickText('garden');await page.keyboard.press('Home');await page.keyboard.type('Мед и воск в 1901 г. — по 5 руб. ');
+  await page.waitForFunction(()=>document.querySelector('#garden').textContent.includes('и\u00A0воск в\u00A01901\u00A0г.\u00A0— по\u00A05\u00A0руб.'));
+  assert.ok((await page.locator('#garden').textContent()).includes('имея в\u00A0своем'));
+  const gardenSignature=await page.locator('#garden').getAttribute('data-typo');assert.match(gardenSignature||'',/^[0-9a-z]+$/);
+  const gardenText=await page.locator('#garden').textContent();
+  assert.equal(await page.locator('#footnote-wax').getAttribute('data-typo'),null);
+  assert.ok((await page.locator('#footnote-wax').textContent()).includes(' в '));
+  await clickText('footnote-wax');await page.keyboard.press('Home');await page.keyboard.type('Ещё. ');
+  await page.waitForFunction(()=>document.querySelector('#footnote-wax').dataset.typo);
+  assert.ok(!(await page.locator('#footnote-wax').textContent()).includes(' в '));
+  assert.equal(await page.locator('#garden').getAttribute('data-typo'),gardenSignature);
+  assert.equal(await page.locator('#garden').textContent(),gardenText);
+  await page.locator('[data-command=undo]').click();
+  assert.equal(await page.locator('#livelihood').getAttribute('data-typo'),null);
+  await page.locator('#typography-all').click();
+  await page.waitForFunction(()=>document.querySelector('#livelihood').dataset.typo);
+  assert.ok((await page.locator('#part-one').textContent()).includes('ЧАСТЬ I.'));
+  pass('non-breaking spaces follow edits per block, signatures skip unchanged blocks, whole-book pass on demand');
   await saved();
+  assert.ok((await readFile(path.join(data,'content.html'),'utf8')).includes('data-typo='));
   const offline='**/api/book';
   await page.route(offline,route=>route.request().method()==='PUT'?route.abort():route.continue());
   await clickText('livelihood');await page.keyboard.press('End');await page.keyboard.type(' Проверка офлайн.');
@@ -199,11 +219,48 @@ try{
   await page.setViewportSize({width:1920,height:1200});await page.evaluate(()=>window.scrollTo(0,0));
   await page.screenshot({path:path.join(output,'editor-1920.png')});
   pass('long cover titles grow without overlapping body; toolbar fits 1000/1440/1920');
-  await page.locator('.frontispiece').click();await page.locator('#detach-cover').click();
-  assert.equal(await page.locator('.opening').count(),0);
-  assert.equal(await page.locator('.image-shell').count(),3);
-  await page.locator('[data-command=undo]').click();assert.equal(await page.locator('.opening').count(),1);
-  pass('cover can become an ordinary editable image; reversible');
+  // Title composition is now a figure with a draggable text overlay.
+  assert.equal(await page.locator('figure.image-figure').count(),1);
+  await clickText('part-one');await page.waitForFunction(()=>!document.querySelector('#overlay-tools').hidden);
+  assert.equal(await page.locator('#overlay-x').inputValue(),'45');
+  await number('overlay-x',30);await number('overlay-width',60);await number('overlay-y',48);
+  assert.equal(await page.locator('.image-overlay').evaluate(el=>el.style.marginLeft),'30%');
+  const grip=page.locator('.overlay-grip');await grip.scrollIntoViewIfNeeded();const gripBox=await grip.boundingBox();
+  const figureWidth=(await page.locator('figure.image-figure').boundingBox()).width;
+  await page.mouse.move(gripBox.x+gripBox.width/2,gripBox.y+gripBox.height/2);await page.mouse.down();
+  await page.mouse.move(gripBox.x+gripBox.width/2+figureWidth*.1,gripBox.y+gripBox.height/2+figureWidth*.05,{steps:8});await page.mouse.up();
+  await page.waitForFunction(()=>document.querySelector('#overlay-x').value==='40');
+  assert.equal(await page.locator('#overlay-y').inputValue(),'53');
+  const resize=page.locator('.overlay-resize');await resize.scrollIntoViewIfNeeded();const resizeBox=await resize.boundingBox();
+  await page.mouse.move(resizeBox.x+resizeBox.width/2,resizeBox.y+resizeBox.height/2);await page.mouse.down();
+  await page.mouse.move(resizeBox.x+resizeBox.width/2-figureWidth*.1,resizeBox.y+resizeBox.height/2,{steps:8});await page.mouse.up();
+  await page.waitForFunction(()=>document.querySelector('#overlay-width').value==='50');
+  await assertOpening();
+  await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:path.join(output,'figure-overlay-editing.png')});
+  await page.locator('#detach-overlay').click();
+  assert.equal(await page.locator('.image-overlay').count(),0);
+  assert.equal(await page.locator('figure.image-figure + h1#part-one, figure.image-figure ~ #part-one').count(),1);
+  await page.locator('.figure-image').click();await page.waitForFunction(()=>!document.querySelector('#figure-text').hidden);
+  await page.locator('#figure-text').click();await page.keyboard.type('Новая надпись');
+  assert.ok((await page.locator('.image-overlay').textContent()).includes('Новая надпись'));
+  await page.locator('[data-command=undo]').click();await page.locator('[data-command=undo]').click();await page.locator('[data-command=undo]').click();
+  assert.ok((await page.locator('.image-overlay').textContent()).includes('ЧАСТЬ I.'));
+  // An ordinary inline image becomes a figure with text; deleting the picture keeps its text as paragraphs.
+  await page.locator('.image-shell:not(.figure-image)').first().click();await page.waitForFunction(()=>!document.querySelector('#figure-text').hidden);
+  await page.locator('#figure-text').click();await page.keyboard.type('Подпись поверх картинки');
+  assert.equal(await page.locator('figure.image-figure').count(),2);
+  assert.equal(await page.locator('.image-shell:not(.figure-image)').count(),1);
+  await page.locator('figure.image-figure').nth(1).locator('.figure-image').click();
+  await page.locator('#delete-image').click();
+  assert.equal(await page.locator('figure.image-figure').count(),1);
+  assert.ok(await page.locator('#book p').filter({hasText:'Подпись поверх картинки'}).count());
+  await page.locator('[data-command=undo]').click();await page.locator('[data-command=undo]').click();await page.locator('[data-command=undo]').click();
+  assert.equal(await page.locator('.image-shell:not(.figure-image)').count(),2);
+  await saved();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+  await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:path.join(output,'figure-overlay-reader.png')});
+  await assertOpening();
+  await page.keyboard.press('e');await page.waitForSelector('#book.ProseMirror');
+  pass('figure overlay: numeric position, drag, resize, detach, add text, convert inline image, delete keeps text; reader shows it');
   await clickText('garden');await page.keyboard.press('Control+End');await page.keyboard.press('Enter');await page.keyboard.type('Новая строка');
   await page.selectOption('#text-style','h3');
   assert.ok(await page.locator('#book h3').filter({hasText:'Новая строка'}).count());
@@ -260,6 +317,9 @@ try{
   pass('dark mode and help');
   assert.deepEqual(errors,[]);pass('no uncaught browser errors');
   await writeFile(path.join(output,'results.json'),JSON.stringify({checks,errors,serverLogs:logs},null,2));
+}catch(e){
+  try{const pages=browser?.contexts()[0]?.pages()||[];if(pages[0]){await pages[0].screenshot({path:path.join(output,'failure.png')});console.log(await pages[0].evaluate(()=>[...document.querySelectorAll('#book img')].map(i=>i.outerHTML.slice(0,160)).join('\n')));}}catch{}
+  throw e;
 }finally{
   if(browser)await browser.close();
   server.kill('SIGTERM');await ended;

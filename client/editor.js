@@ -6,10 +6,11 @@ import {keymap} from 'prosemirror-keymap';
 import {schema, parseDocument, serializeDocument, DEFAULTS, styleName, imageDOM} from './schema.js';
 import {api, applyAssetURLs, notify, base} from '../public/js/api.js';
 import {makeTOC} from '../shared/model.js';
+import {typography, retypeAll} from './typography-plugin.js';
 
 const $=id=>document.getElementById(id);
 const uid=()=>`b-${crypto.randomUUID()}`;
-const imageTypes=new Set(['image','cover_image']);
+const imageTypes=new Set(['image','figure_image']);
 const controlIds=['text-style','font-family','font-size','line-height','text-indent','text-align'];
 export function createEditor(state,book,panels) {
   let view=null, dirty=false, flight=null, timer=null, conflict=false, uploadCount=0;
@@ -26,6 +27,17 @@ export function createEditor(state,book,panels) {
   function selectedImage() {
     const sel=view?.state.selection;
     return sel instanceof NodeSelection && imageTypes.has(sel.node.type.name)?{node:sel.node,pos:sel.from}:null;
+  }
+  function overlayAt() {
+    if(!view)return null;
+    const {$from}=view.state.selection;
+    for(let depth=$from.depth;depth>0;depth--)if($from.node(depth).type===schema.nodes.overlay)return {node:$from.node(depth),pos:$from.before(depth),figure:$from.node(depth-1),figurePos:$from.before(depth-1)};
+    return null;
+  }
+  function figureOf(image) {
+    if(!image||image.node.type.name!=='figure_image')return null;
+    const $pos=view.state.doc.resolve(image.pos);
+    return {node:$pos.parent,pos:$pos.before(),overlay:$pos.parent.childCount>1?$pos.parent.child(1):null};
   }
   function captureNativeSelection() {
     const native=getSelection();
@@ -78,17 +90,18 @@ export function createEditor(state,book,panels) {
     for(const b of document.querySelectorAll('[data-command]:not([data-command=undo]):not([data-command=redo])'))b.disabled=!!image||!blocks.length;
     document.querySelector('[data-command=undo]').disabled=!undo(view.state);
     document.querySelector('[data-command=redo]').disabled=!redo(view.state);
-    const cover=image?.node.type.name==='cover_image';
+    const figure=figureOf(image), overlay=overlayAt();
     $('image-tools').classList.toggle('has-image',!!image);
     for(const id of ['image-wrap','image-align','image-width','image-alt','delete-image'])$(id).disabled=!image;
-    $('image-wrap').disabled=!image||cover;
-    $('image-align').disabled=!image||cover;
-    $('detach-cover').hidden=!cover;
-    $('image-selection-label').textContent=cover?'Гравюра титула':image?'Изображение':'Выберите изображение';
+    $('image-wrap').disabled=!image||!!figure;
+    $('figure-text').hidden=!image||!!figure?.overlay;
+    $('image-selection-label').textContent=figure?'Картинка с текстом':image?'Изображение':'Выберите изображение';
     setControl('image-wrap',image?.node.attrs.mode||'block');
     setControl('image-align',image?.node.attrs.align||'center');
-    setControl('image-width',image?.node.attrs.width||(cover?79.19:45));
+    setControl('image-width',image?.node.attrs.width||45);
     setControl('image-alt',image?.node.attrs.alt||'');
+    $('overlay-tools').hidden=!overlay;
+    if(overlay){setControl('overlay-x',overlay.node.attrs.x);setControl('overlay-y',overlay.node.attrs.y);setControl('overlay-width',overlay.node.attrs.width);}
   }
   function updateTOC() {
     const root=document.createElement('div');root.innerHTML=currentHTML();
@@ -149,7 +162,7 @@ export function createEditor(state,book,panels) {
       const selected=dom.classList.contains('ProseMirror-selectednode');
       dom.className=`image-shell ${a.class}${selected?' ProseMirror-selectednode':''}`;
       dom.dataset.align=current.attrs.align;
-      dom.style.width=`${current.attrs.width||45}%`;
+      dom.style.width=`${current.attrs.width||(current.type.name==='figure_image'?100:45)}%`;
       img.src=base+current.attrs.src;img.alt=current.attrs.alt;img.draggable=false;
       if(current.attrs.id)dom.id=current.attrs.id;
     };
@@ -174,6 +187,34 @@ export function createEditor(state,book,panels) {
       deselectNode(){dom.classList.remove('ProseMirror-selectednode');},
       stopEvent:e=>e.target===handle,ignoreMutation:()=>true};
   }
+  // Плашка с текстом на картинке: перетаскивается за ручку, ширина меняется маркером справа.
+  function overlayView(node,editor,getPos) {
+    let current=node;
+    const dom=document.createElement('div'),grip=document.createElement('span'),handle=document.createElement('span'),contentDOM=document.createElement('div');
+    dom.className='image-overlay';contentDOM.className='image-overlay-content';
+    grip.className='overlay-grip';grip.title='Потяните, чтобы переместить текст по картинке';grip.contentEditable='false';grip.setAttribute('aria-hidden','true');
+    handle.className='overlay-resize';handle.title='Потяните, чтобы изменить ширину плашки';handle.contentEditable='false';handle.setAttribute('aria-hidden','true');
+    dom.append(grip,contentDOM,handle);
+    const place=a=>{dom.style.marginLeft=`${a.x}%`;dom.style.marginTop=`${a.y}%`;dom.style.width=`${a.width}%`;};
+    const render=()=>{place(current.attrs);if(current.attrs.id)dom.id=current.attrs.id;};
+    render();
+    const clamp=(v,min,max)=>Math.round(Math.min(max,Math.max(min,v)));
+    const drag=(el,compute)=>el.addEventListener('pointerdown',e=>{
+      e.preventDefault();e.stopPropagation();el.setPointerCapture(e.pointerId);
+      const figure=dom.parentElement.getBoundingClientRect(),startX=e.clientX,startY=e.clientY,start={...current.attrs};
+      let next=start;
+      const move=ev=>{next=compute(start,(ev.clientX-startX)/figure.width*100,(ev.clientY-startY)/figure.width*100);place(next);};
+      const stop=()=>{el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',end);el.removeEventListener('pointercancel',cancel);};
+      const end=()=>{stop();const pos=getPos();if(typeof pos==='number'&&next!==start)editor.dispatch(closeHistory(editor.state.tr).setNodeMarkup(pos,undefined,next));else render();};
+      const cancel=()=>{stop();render();};
+      el.addEventListener('pointermove',move);el.addEventListener('pointerup',end);el.addEventListener('pointercancel',cancel);
+    });
+    drag(grip,(s,dx,dy)=>({...s,x:clamp(s.x+dx,0,100-s.width),y:clamp(s.y+dy,0,300)}));
+    drag(handle,(s,dx)=>({...s,width:clamp(s.width+dx,10,100-s.x)}));
+    return {dom,contentDOM,update(n){if(n.type!==current.type)return false;current=n;render();return true;},
+      stopEvent:e=>e.target===grip||e.target===handle,
+      ignoreMutation:m=>m.type!=='selection'&&(!contentDOM.contains(m.target)||m.target===contentDOM&&m.type==='attributes')};
+  }
   async function toggle() {
     if(state.editing) {
       if(!(await save()))return;
@@ -190,7 +231,7 @@ export function createEditor(state,book,panels) {
     state.editing=true;document.body.classList.add('editing');$('editor-toolbar').hidden=false;$('toggle-editor').classList.add('active');
     view=new EditorView({mount:book},{
       state:EditorState.create({schema,doc,plugins:[
-        history(),ids,
+        history(),ids,typography,
         keymap({'Mod-z':undo,'Shift-Mod-z':redo,'Mod-y':redo,
           'Mod-b':toggleMark(schema.marks.strong),'Mod-i':toggleMark(schema.marks.em),'Mod-u':toggleMark(schema.marks.underline),
           'Mod-Home':(s,d)=>{d(s.tr.setSelection(TextSelection.atStart(s.doc)).scrollIntoView());return true;},
@@ -199,7 +240,7 @@ export function createEditor(state,book,panels) {
         keymap(baseKeymap)
       ]}),
       dispatchTransaction:dispatch,
-      nodeViews:{image:imageView},
+      nodeViews:{image:imageView,figure_image:imageView,overlay:overlayView},
       // The mounted article owns .book, spellcheck and its accessible label.
       // ProseMirror removes every attribute/class declared here on destroy().
       // Only give it editor-specific attributes; otherwise exiting strips reader styling.
@@ -320,16 +361,59 @@ export function createEditor(state,book,panels) {
   };
   numberControl('image-width',5,100,v=>changeImage({width:v}));
   $('image-alt').onchange=e=>changeImage({alt:e.target.value});
-  $('delete-image').onclick=()=>{if(selectedImage())finish(view.state.tr.deleteSelection());};
-  $('detach-cover').onclick=()=>{
-    const image=selectedImage();if(!image||image.node.type.name!=='cover_image')return;
-    const $pos=view.state.doc.resolve(image.pos);
-    if($pos.parent.type!==schema.nodes.opening)return;
-    const opening=$pos.parent, start=$pos.before();
-    const imageParagraph=schema.nodes.paragraph.create({id:uid()},schema.nodes.image.create({...image.node.attrs,mode:'block',align:'center',width:45}));
-    const nodes=[imageParagraph];opening.forEach(node=>{if(node.type===schema.nodes.opening_titles)node.forEach(child=>nodes.push(child));});
-    const tr=view.state.tr.replaceWith(start,start+opening.nodeSize,nodes);
-    finish(tr.setSelection(NodeSelection.create(tr.doc,start+1)));
+  $('delete-image').onclick=()=>{
+    const image=selectedImage();if(!image)return;
+    const figure=figureOf(image);
+    if(!figure){finish(view.state.tr.deleteSelection());return;}
+    // Картинка с текстом: текст плашки остаётся в книге обычными абзацами.
+    const nodes=[];figure.overlay?.forEach(child=>nodes.push(child));
+    const tr=view.state.tr.replaceWith(figure.pos,figure.pos+figure.node.nodeSize,nodes.length?nodes:schema.nodes.paragraph.create({id:uid()}));
+    finish(tr.setSelection(TextSelection.near(tr.doc.resolve(figure.pos))));
+  };
+  // Текст на картинке: обычная картинка становится блоком «картинка + плашка»,
+  // а у блока без плашки появляется пустая плашка.
+  $('figure-text').onclick=()=>{
+    const image=selectedImage();if(!image)return;
+    const figure=figureOf(image);
+    const overlay=()=>schema.nodes.overlay.create({id:uid()},schema.nodes.paragraph.create({id:uid(),align:'center',indent:'0rem'}));
+    let tr=view.state.tr, inside;
+    if(figure){
+      if(figure.overlay)return;
+      const target=figure.pos+figure.node.nodeSize-1;tr.insert(target,overlay());inside=target+2;
+    }else{
+      const $pos=view.state.doc.resolve(image.pos), parent=$pos.parent, parentPos=$pos.before();
+      const attrs={...image.node.attrs,id:uid(),width:image.node.attrs.width||45,mode:'block'};
+      const node=schema.nodes.figure.create({id:uid()},[schema.nodes.figure_image.create(attrs),overlay()]);
+      // Пустой абзац плашки лежит перед закрывающими границами плашки и блока: -3 от конца блока.
+      if(parent.childCount===1){tr.replaceWith(parentPos,parentPos+parent.nodeSize,node);inside=parentPos+node.nodeSize-3;}
+      else{tr.delete(image.pos,image.pos+1);const after=tr.mapping.map(parentPos+parent.nodeSize);tr.insert(after,node);inside=after+node.nodeSize-3;}
+    }
+    finish(tr.setSelection(TextSelection.create(tr.doc,inside)).scrollIntoView());
+  };
+  $('detach-overlay').onclick=()=>{
+    const overlay=overlayAt();if(!overlay)return;
+    const nodes=[];overlay.node.forEach(child=>nodes.push(child));
+    const tr=view.state.tr.delete(overlay.pos,overlay.pos+overlay.node.nodeSize);
+    const after=tr.mapping.map(overlay.figurePos+overlay.figure.nodeSize);
+    tr.insert(after,nodes);
+    finish(tr.setSelection(TextSelection.near(tr.doc.resolve(after+1))));
+  };
+  function overlayAttribute(name,value) {
+    const overlay=overlayAt();if(!overlay)return;
+    const next={...overlay.node.attrs,[name]:value};
+    if(name==='x')next.width=Math.min(next.width,100-value);
+    if(name==='width')next.x=Math.min(next.x,100-value);
+    finish(view.state.tr.setNodeMarkup(overlay.pos,undefined,next));
+  }
+  numberControl('overlay-x',0,90,v=>overlayAttribute('x',Math.round(v)));
+  numberControl('overlay-y',0,300,v=>overlayAttribute('y',Math.round(v)));
+  numberControl('overlay-width',10,100,v=>overlayAttribute('width',Math.round(v)));
+  $('typography-all').onclick=()=>{
+    if(!view)return;
+    const tr=retypeAll(view.state);
+    if(!tr){notify('Неразрывные пробелы уже расставлены во всех абзацах.');return;}
+    const count=tr.getMeta('typographyChanged');
+    finish(tr);notify(`Проверена вся книга: неразрывные пробелы обновлены в ${count} абзацах.`);
   };
   for(const [id,kind]of [['short-divider','short'],['long-divider','long']])$(id).onclick=()=>{
     if(!view)return;

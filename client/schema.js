@@ -14,12 +14,13 @@ const font = value => (value || '').replace(/["']/g,'').trim() || null;
 const attrs = {
   id:{default:null}, kind:{default:'p'}, align:{default:null},
   size:{default:null}, family:{default:null}, leading:{default:null},
-  indent:{default:null}, signature:{default:false}
+  indent:{default:null}, signature:{default:false}, typo:{default:null}
 };
 function blockAttrs(dom) {
   return {id:dom.id || null, kind:dom.dataset.style === 'paragraph' ? 'paragraph' : dom.classList.contains('small') ? 'small' : 'p',
     align:dom.style.textAlign || null, size:cssSize(dom.style.fontSize), family:font(dom.style.fontFamily),
-    leading:dom.style.lineHeight || null, indent:cssSize(dom.style.textIndent), signature:dom.classList.contains('signature')};
+    leading:dom.style.lineHeight || null, indent:cssSize(dom.style.textIndent), signature:dom.classList.contains('signature'),
+    typo:/^[0-9a-z]{1,8}$/.test(dom.dataset.typo || '') ? dom.dataset.typo : null};
 }
 function blockDOM(node) {
   const a=node.attrs, out={};
@@ -27,6 +28,7 @@ function blockDOM(node) {
   const classes=[a.kind==='small'?'small':'',a.signature?'signature':''].filter(Boolean);
   if(classes.length)out.class=classes.join(' ');
   if(a.kind==='paragraph')out['data-style']='paragraph';
+  if(a.typo)out['data-typo']=a.typo;
   const styles = [['text-align',a.align],['font-size',a.size],['font-family',a.family],['line-height',a.leading],['text-indent',a.indent]]
     .filter(([,v])=>v).map(([k,v])=>`${k}:${v}`);
   if(styles.length)out.style=styles.join(';');
@@ -39,11 +41,12 @@ export function imageAttrs(dom) {
   if(at<0 || !/^\/books\/bees\/img\/[a-zA-Z0-9_.-]+\.(png|jpg|jpeg|webp|gif)$/.test(src.slice(at)))return false;
   return {id:dom.id||null,src:src.slice(at),alt:dom.getAttribute('alt')||'Иллюстрация',mode,align,width:parseFloat(dom.style.width)||null};
 }
-const imageDefaults={id:{default:null},src:{},alt:{default:''},mode:{default:'block'},align:{default:'center'},width:{default:null}};
+const percent=value=>{const n=parseFloat(value);return Number.isFinite(n)&&/%$/.test(value||'')?Math.min(300,Math.max(0,Math.round(n))):null;};
+const imageDefaults={id:{default:null},src:{default:''},alt:{default:''},mode:{default:'block'},align:{default:'center'},width:{default:null}};
 export function imageDOM(node) {
-  const a=node.attrs, cover=node.type.name==='cover_image';
+  const a=node.attrs, figure=node.type.name==='figure_image';
   const mode=a.mode==='square'?(a.align==='right'?'wrap-right':'wrap-left'):`wrap-${a.mode}`;
-  return ['img',{...(a.id?{id:a.id}:{}),src:a.src,alt:a.alt,class:cover?'frontispiece':`book-image ${mode}`,
+  return ['img',{...(a.id?{id:a.id}:{}),src:a.src,alt:a.alt,class:figure?'figure-image':`book-image ${mode}`,
     'data-align':a.align,...(a.width?{style:`width:${a.width}%`}:{})}];
 }
 export const schema = new Schema({
@@ -53,10 +56,21 @@ export const schema = new Schema({
     heading:{group:'block',content:'inline*',defining:true,attrs:{...attrs,level:{default:1}},
       parseDOM:[1,2,3].map(level=>({tag:`h${level}`,getAttrs:dom=>({...blockAttrs(dom),level})})),
       toDOM:n=>[`h${n.attrs.level}`,blockDOM(n),0]},
-    opening:{group:'block',content:'cover_image? opening_titles',isolating:true,
-      parseDOM:[{tag:'header.opening'}],toDOM:()=>['header',{class:'opening'},0]},
-    opening_titles:{content:'block+',defining:true,parseDOM:[{tag:'.opening-titles'}],toDOM:()=>['div',{class:'opening-titles'},0]},
-    cover_image:{group:'block',atom:true,draggable:true,attrs:imageDefaults,parseDOM:[{tag:'img.frontispiece',priority:80,getAttrs:imageAttrs}],toDOM:imageDOM},
+    // Картинка с текстовой плашкой. Плашка позиционируется в процентах ширины блока
+    // (и по горизонтали, и по вертикали), поэтому композиция сохраняется при любой ширине окна.
+    // Блок — CSS-сетка из одной ячейки: картинка и плашка лежат в ней вместе, а ячейка растёт по содержимому.
+    figure:{group:'block',content:'figure_image overlay?',isolating:true,attrs:{id:{default:null}},
+      parseDOM:[{tag:'figure.image-figure',getAttrs:d=>({id:d.id||null})},{tag:'header.opening',getAttrs:d=>({id:d.id||null})}],
+      toDOM:n=>['figure',{class:'image-figure',...(n.attrs.id?{id:n.attrs.id}:{})},0]},
+    figure_image:{atom:true,draggable:false,attrs:imageDefaults,
+      parseDOM:[{tag:'img',context:'figure/',priority:70,getAttrs:d=>{
+        const a=imageAttrs(d);if(!a)return false;
+        return d.classList.contains('frontispiece')&&!d.style.width?{...a,width:79.19,align:'left'}:a;
+      }}],toDOM:imageDOM},
+    overlay:{content:'block+',defining:true,isolating:true,attrs:{id:{default:null},x:{default:50},y:{default:40},width:{default:45}},
+      parseDOM:[{tag:'.image-overlay',context:'figure/',getAttrs:d=>({id:d.id||null,x:percent(d.style.marginLeft)??50,y:percent(d.style.marginTop)??40,width:percent(d.style.width)??45})},
+        {tag:'.opening-titles',context:'figure/',getAttrs:d=>({id:d.id||null,x:45,y:52,width:55})}],
+      toDOM:n=>['div',{class:'image-overlay',...(n.attrs.id?{id:n.attrs.id}:{}),style:`margin-left:${n.attrs.x}%;margin-top:${n.attrs.y}%;width:${n.attrs.width}%`},0]},
     image:{inline:true,group:'inline',atom:true,draggable:true,attrs:imageDefaults,parseDOM:[{tag:'img',getAttrs:imageAttrs}],toDOM:imageDOM},
     rule:{group:'block',atom:true,attrs:{kind:{default:'short'},id:{default:null}},parseDOM:[{tag:'hr',getAttrs:d=>({kind:d.classList.contains('divider-long')?'long':'short',id:d.id||null})}],toDOM:n=>['hr',{class:`divider-${n.attrs.kind}`,...(n.attrs.id?{id:n.attrs.id}:{})}]},
     blockquote:{group:'block',content:'block+',defining:true,parseDOM:[{tag:'blockquote'}],toDOM:()=>['blockquote',0]},
