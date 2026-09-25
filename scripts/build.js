@@ -1,0 +1,30 @@
+import {mkdir,cp,writeFile,rm} from 'node:fs/promises';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {deflateSync} from 'node:zlib';
+import {getBook,regenerate} from '../server/store.js';
+import {pageHTML} from '../server/template.js';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+process.chdir(root);
+const icons=['pencil-line','bookmark','sun-moon','info','x','undo-2','redo-2','sliders-horizontal','image','check'];
+await mkdir('public/assets/icons',{recursive:true});
+for(const icon of icons)await cp(`node_modules/lucide-static/icons/${icon}.svg`,`public/assets/icons/${icon}.svg`);
+await cp('node_modules/lucide-static/LICENSE','public/assets/icons/LICENSE');
+await mkdir('public/shared',{recursive:true});
+await cp('shared/model.js','public/shared/model.js');
+// Deterministic, tiled paper grain; PNG built with Node's built-in zlib.
+const crc32=buf=>{let crc=0xffffffff;for(const b of buf){crc^=b;for(let i=0;i<8;i++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}return (crc^0xffffffff)>>>0;};
+const chunk=(type,data)=>{const t=Buffer.from(type),len=Buffer.alloc(4),crc=Buffer.alloc(4);len.writeUInt32BE(data.length);crc.writeUInt32BE(crc32(Buffer.concat([t,data])));return Buffer.concat([len,t,data,crc]);};
+const width=256,height=256,raw=Buffer.alloc((width+1)*height);let seed=19;
+for(let y=0;y<height;y++){for(let x=0;x<width;x++){seed=(seed*1664525+1013904223)>>>0;raw[y*(width+1)+x+1]=150+(seed%106);}}
+const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(width);ihdr.writeUInt32BE(height,4);ihdr[8]=8;
+await writeFile('public/assets/noise.png',Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',ihdr),chunk('IDAT',deflateSync(raw)),chunk('IEND',Buffer.alloc(0))]));
+await regenerate();
+await rm('dist',{recursive:true,force:true});
+await mkdir('dist',{recursive:true});await cp('public','dist',{recursive:true});
+await cp('data/books/bees/img','dist/books/bees/img',{recursive:true});
+const book=await getBook();
+const base=process.env.PREVIEW_API_BASE||'';
+const html=pageHTML(book,base).replaceAll('src="/books/bees/img/','src="./books/bees/img/');
+await writeFile('dist/index.html',html);
+console.log(`Built static reader and client modules (${base?'proxied preview':'same-origin'}).`);

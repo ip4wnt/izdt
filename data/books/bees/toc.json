@@ -1,0 +1,50 @@
+[
+  {
+    "id": "general",
+    "level": 1,
+    "autoTitle": "ЧАСТЬ I. ОБЩИЕ УКАЗАНИЯ.",
+    "title": "ЧАСТЬ I. ОБЩИЕ УКАЗАНИЯ.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "preliminary",
+    "level": 2,
+    "autoTitle": "Предварительные сведения.",
+    "title": "Предварительные сведения.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "products-title",
+    "level": 3,
+    "autoTitle": "Пчеловодство и его продукты.",
+    "title": "Пчеловодство и его продукты.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "future-title",
+    "level": 3,
+    "autoTitle": "Будущее пчеловодства.",
+    "title": "Будущее пчеловодства.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "distribution-title",
+    "level": 3,
+    "autoTitle": "Распространение пчеловодства.",
+    "title": "Распространение пчеловодства.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "benefits-title",
+    "level": 3,
+    "autoTitle": "Польза, приносимая пчеловодством земледелию.",
+    "title": "Польза, приносимая пчеловодством земледелию.",
+    "hidden": false,
+    "manual": false
+  }
+]

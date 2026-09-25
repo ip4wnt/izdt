@@ -1,0 +1,24 @@
+{
+  "name": "izdt",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "File-backed book editor and static reader",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "build": "node scripts/build.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "linkedom": "^0.18.12",
+    "sanitize-html": "^2.17.7"
+  },
+  "devDependencies": {
+    "lucide-static": "^0.468.0",
+    "playwright": "^1.58.2"
+  }
+}

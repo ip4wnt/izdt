@@ -1,0 +1,54 @@
+import {readFile,writeFile,mkdir,rename,copyFile} from 'node:fs/promises';
+import path from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {normalize,makeTOC,annotate} from './document.js';
+import {pageHTML} from './template.js';
+
+export const bookDir = path.resolve(process.env.DATA_DIR || 'data/books/bees');
+const readJSON = async (file, fallback) => {
+  try { return JSON.parse(await readFile(path.join(bookDir,file),'utf8')); }
+  catch(e) { if(e.code==='ENOENT') return fallback; throw e; }
+};
+export async function atomic(file, value) {
+  const destination=path.join(bookDir,file);
+  await mkdir(path.dirname(destination),{recursive:true});
+  const tmp=`${destination}.${randomUUID()}.tmp`;
+  await writeFile(tmp,value); await rename(tmp,destination);
+}
+export const json = (file,data) => atomic(file,JSON.stringify(data,null,2)+'\n');
+let queue=Promise.resolve();
+export function transaction(fn) {
+  const next=queue.then(fn); queue=next.catch(()=>{}); return next;
+}
+export async function getBook() {
+  const html=await readFile(path.join(bookDir,'content.html'),'utf8');
+  const meta=await readJSON('meta.json',{revision:0,title:'Полный курс пчеловодства'});
+  const overrides=await readJSON('toc-overrides.json',{});
+  const {root}=normalize(html);
+  return {html,...meta,overrides,toc:makeTOC(root,overrides)};
+}
+export const getNotes = reader => readJSON(`readers/${reader}/notes.json`,[]);
+export async function regenerate() {
+  const book=await getBook();
+  await json('toc.json',book.toc);
+  await atomic('generated/index.html',pageHTML(book));
+  return book;
+}
+export async function saveBook(html,revision) {
+  const previous=await getBook();
+  if(revision!==previous.revision) throw Object.assign(new Error('Книга изменена в другой вкладке. Скопируйте свои правки и обновите страницу.'),{status:409});
+  const normalized=normalize(html);
+  if(!normalized.root.textContent.trim()) throw Object.assign(new Error('Книга не может быть пустой.'),{status:400});
+  await mkdir(path.join(bookDir,'history'),{recursive:true});
+  await copyFile(path.join(bookDir,'content.html'),path.join(bookDir,'history',`${previous.revision}-${Date.now()}.html`));
+  await atomic('content.html',normalized.html);
+  await json('meta.json',{title:previous.title,revision:previous.revision+1});
+  return regenerate();
+}
+export async function readerPage(reader) {
+  const book=await getBook();
+  const rendered=annotate(book.html,await getNotes(reader));
+  const html=pageHTML({...book,html:rendered.html,notes:rendered.notes});
+  await atomic(`readers/${reader}/index.html`,html);
+  return {html,notes:rendered.notes,content:rendered.html};
+}

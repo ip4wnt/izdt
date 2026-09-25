@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+data/books/*/readers/
+data/books/*/generated/
+data/books/*/history/
+*.log
+.DS_Store
+public/fonts/*.ttf
+public/fonts/*.woff*
+public/shared/
+.qa-output/
+data/books/*/img/*
+!data/books/bees/img/frontispiece.png
