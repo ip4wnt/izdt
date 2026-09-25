@@ -5,7 +5,7 @@
     "autoTitle": "ЧАСТЬ I. ОБЩИЕ УКАЗАНИЯ.",
     "title": "ЧАСТЬ I. ОБЩИЕ УКАЗАНИЯ.",
     "hidden": false,
-    "manual": false
+    "manual": true
   },
   {
     "id": "preliminary",
@@ -76,6 +76,30 @@
     "level": 3,
     "autoTitle": "Сторожевые, вентилирующие. очищающие.",
     "title": "Сторожевые, вентилирующие. очищающие.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-e2b49533-7cd3-4e42-a2a1-69a5d94cd1ab",
+    "level": 3,
+    "autoTitle": "Собирательницы.",
+    "title": "Собирательницы.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-07bd8fa9-d34c-44e2-8d2b-0cee53193ec0",
+    "level": 3,
+    "autoTitle": "Рабочие пчелы и трутни.",
+    "title": "Рабочие пчелы и трутни.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-04dcf919-ab40-4c4c-8d57-217f2531eae6",
+    "level": 3,
+    "autoTitle": "Краткое описание рабочей пчелы.",
+    "title": "Краткое описание рабочей пчелы.",
     "hidden": false,
     "manual": false
   }
