@@ -1,1 +1,24 @@
-[]
+[
+  {
+    "id": "74339dce-e921-46e5-b82e-b5a0247026eb",
+    "blockId": "b-2ad7b572-66ae-4eca-9569-24b9568519e3",
+    "start": 220,
+    "quote": "(см. § 58).",
+    "createdAt": "2026-09-25T21:01:02.581Z",
+    "end": 231,
+    "part": "ЧАСТЬ I. ГЛАВА I.",
+    "chapter": "Пчела.",
+    "orphan": false
+  },
+  {
+    "id": "efecad76-2c92-430b-8476-40325b92cb30",
+    "blockId": "b-3f962667-2d06-4f86-836a-71487d6ed94d",
+    "start": 147,
+    "quote": "(см. § 292).",
+    "createdAt": "2026-09-25T21:01:06.596Z",
+    "end": 159,
+    "part": "ЧАСТЬ I. ГЛАВА I.",
+    "chapter": "Пчела.",
+    "orphan": false
+  }
+]
