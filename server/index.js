@@ -3,7 +3,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {bookDir,getBook,getNotes,json,transaction,regenerate,saveBook,readerPage} from './store.js';
+import {bookDir,getBook,getNotes,json,transaction,regenerate,saveBook,readerPage,sharedData,notesFile,getBookmark} from './store.js';
 import {parseFragment,resolveNote} from './document.js';
 import {MAX_HTML,MAX_IMAGE,ID_PATTERN,READER_PATTERN} from '../shared/model.js';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -50,7 +50,16 @@ const server=http.createServer(async(req,res)=>{
   const send=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
   try{
     const url=new URL(req.url,'http://localhost');const route=decodeURIComponent(url.pathname);
-    if(route==='/api/health')return send({ok:true,mode:testMode?'test':'protected',localOnly});
+    if(route==='/api/health')return send({ok:true,mode:testMode?'test':'protected',localOnly,sharedData});
+    if(route==='/api/bookmark'&&sharedData){
+      if(req.method==='GET')return send({bookmark:await getBookmark()});
+      if(req.method==='PUT'){
+        editor(req);const {bookmark}=await readData(req);
+        if(bookmark!==null&&(!bookmark||!ID_PATTERN.test(bookmark.blockId)||!Number.isFinite(bookmark.offset)||Math.abs(bookmark.offset)>1e6||!Number.isFinite(bookmark.y)||bookmark.y<0||bookmark.y>1e9))throw fail(400,'Некорректная закладка.');
+        const value=bookmark===null?null:{blockId:bookmark.blockId,offset:bookmark.offset,y:bookmark.y};
+        return send(await transaction(async()=>{await json('bookmark.json',value);return {bookmark:value};}));
+      }
+    }
     if(route==='/api/book'&&req.method==='GET')return send(await getBook());
     if(route==='/api/book'&&req.method==='PUT'){
       editor(req); const data=await readData(req);
@@ -79,7 +88,7 @@ const server=http.createServer(async(req,res)=>{
         if(note.orphan)throw fail(409,'Фрагмент изменился. Выделите его заново.');
         const notes=await getNotes(reader);
         if(notes.length>=1000)throw fail(400,'Достигнут лимит 1000 заметок.');
-        if(!notes.some(n=>n.blockId===note.blockId&&n.start===note.start&&n.quote===note.quote)){notes.push(note);await json(`readers/${reader}/notes.json`,notes);}
+        if(!notes.some(n=>n.blockId===note.blockId&&n.start===note.start&&n.quote===note.quote)){notes.push(note);await json(notesFile(reader),notes);}
         return readerPage(reader);
       }),201);
     }

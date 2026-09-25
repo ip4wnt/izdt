@@ -21,7 +21,6 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.code==='KeyS'&&state.editing){e.preventDefault();editor.save();return;}
   if(e.key==='Escape'){
     document.getElementById('selection-note').hidden=true;
-    if(!document.getElementById('format-popover').hidden){document.getElementById('format-popover').hidden=true;return;}
     if(state.editing){e.preventDefault();editor.toggle();}else panels.close();
     return;
   }
@@ -41,4 +40,6 @@ try{
     if(!state.editing){state.notes=reader.notes;book.innerHTML=reader.content;applyAssetURLs(book);panels.render();}
   }
 }catch(e){notify('Открыта статичная копия книги. '+e.message,12000);}
-if(!persistent)notify('Браузер запретил localStorage: заметки доступны в этой вкладке, закладка не переживёт её закрытие.',12000);
+if(!persistent)notify(initial.sharedData
+  ?'Браузер запретил localStorage. Общие заметки и закладка по-прежнему сохраняются в папке книги.'
+  :'Браузер запретил localStorage: доступ к заметкам привязан к этой вкладке, закладка не переживёт её закрытие.',12000);

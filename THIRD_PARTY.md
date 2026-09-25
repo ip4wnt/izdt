@@ -8,3 +8,5 @@
 - **Playwright**: dev-only инструмент тестирования, [проект Playwright](https://github.com/microsoft/playwright), лицензия Apache-2.0.
 - **Шрифты**: файлы пользователя не включены в Git. Условия тестового подключения указаны в `public/fonts/README.md`. Перед production нужно проверить web-лицензии.
 - **Шум бумаги**: программно сгенерированный PNG в `scripts/build.js`, без внешних изображений.
+- **ProseMirror**: модули редактора из npm, MIT License. Лицензионные комментарии сборки находятся рядом с `public/js/editor.js` в генерируемом `editor.js.LEGAL.txt`; исходные лицензии в соответствующих `node_modules/prosemirror-*/LICENSE`.
+- **esbuild**: инструмент локальной сборки, MIT License, исходная лицензия в `node_modules/esbuild/LICENSE.md`.

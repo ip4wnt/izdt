@@ -54,6 +54,7 @@ try {
     HOST: '127.0.0.1',
     PORT: String(port),
     LOCAL_ONLY: '1',
+    SHARED_DATA: '1',
     TEST_MODE: '1',
     EDITOR_TOKEN: '',
     DATA_DIR: path.join(root, 'data/books/bees'),
@@ -68,7 +69,9 @@ try {
   const installed = await Promise.all([
     'node_modules/linkedom/package.json',
     'node_modules/sanitize-html/package.json',
-    'node_modules/lucide-static/package.json'
+    'node_modules/lucide-static/package.json',
+    'node_modules/prosemirror-view/package.json',
+    'node_modules/esbuild/package.json'
   ].map(exists));
   if (previous !== hash || installed.includes(false)) {
     console.log('\nInstalling dependencies. Internet is required for the first launch.\n');

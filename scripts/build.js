@@ -1,11 +1,22 @@
-import {mkdir,cp,writeFile,rm} from 'node:fs/promises';
+import {mkdir,cp,writeFile,rm,readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {deflateSync} from 'node:zlib';
 import {getBook,regenerate} from '../server/store.js';
 import {pageHTML} from '../server/template.js';
+import {build} from 'esbuild';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 process.chdir(root);
+await build({
+  entryPoints:['client/editor.js'],bundle:true,format:'esm',target:'es2022',
+  outfile:'public/js/editor.js',minify:true,
+  plugins:[{name:'shared-api-module',setup(build){
+    build.onResolve({filter:/public\/js\/api\.js$/},()=>({path:'./api.js',external:true}));
+  }}]
+});
+const bundledLibraries=['prosemirror-model','prosemirror-state','prosemirror-view','prosemirror-transform','prosemirror-commands','prosemirror-history','prosemirror-keymap','orderedmap','rope-sequence','w3c-keyname'];
+const licenses=await Promise.all(bundledLibraries.map(async name=>`${name}\n${'='.repeat(name.length)}\n${await readFile(`node_modules/${name}/LICENSE`,'utf8')}`));
+await writeFile('public/js/editor.js.LEGAL.txt',licenses.join('\n\n'));
 const icons=['pencil-line','bookmark','sun-moon','info','x','undo-2','redo-2','sliders-horizontal','image','check'];
 await mkdir('public/assets/icons',{recursive:true});
 for(const icon of icons)await cp(`node_modules/lucide-static/icons/${icon}.svg`,`public/assets/icons/${icon}.svg`);

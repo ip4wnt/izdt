@@ -12,12 +12,12 @@ export function normalize(html) {
     allowedTags: ['div','section','header','h1','h2','h3','p','span','em','i','strong','b','u','s','br','hr','img','figure','figcaption','blockquote','ul','ol','li','a'],
     allowedAttributes: {
       '*':['id','class','style','data-style'],
-      img:['src','alt','width','height'], a:['href','title']
+      img:['src','alt','width','height','data-align'], a:['href','title']
     },
-    allowedClasses: {'*':['opening','frontispiece','opening-titles','paragraph','small','signature','divider-short','divider-long','wrap-left','wrap-right','wrap-block','wrap-inline']},
+    allowedClasses: {'*':['opening','frontispiece','opening-titles','paragraph','small','signature','divider-short','divider-long','wrap-left','wrap-right','wrap-block','wrap-inline','book-image']},
     allowedStyles: {'*':{
       'font-size':rem, 'line-height':[/^\d(?:\.\d{1,4})?$/, ...rem],
-      'text-indent':rem, 'font-family':[/^["']?(?:TT Marxiana|Old Standard TT|Akzidenz-Grotesk Pro|Roboto Condensed|Georgia|serif|sans-serif)["']?$/],
+      'text-indent':rem, 'font-family':[/^["']?(?:TT Marxiana|Old Standard TT|Akzidenz-Grotesk Pro|Roboto Condensed|Georgia|Arial|serif|sans-serif)["']?$/],
       'text-align':[/^(left|right|center|justify)$/], 'font-style':[/^(normal|italic)$/],
       'font-weight':[/^(normal|bold|400|700)$/], 'width':[/^(?:[1-9]\d?|100)%$/]
     }},

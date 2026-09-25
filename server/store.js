@@ -1,10 +1,11 @@
-import {readFile,writeFile,mkdir,rename,copyFile} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,rename,copyFile,readdir} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {normalize,makeTOC,annotate} from './document.js';
 import {pageHTML} from './template.js';
 
 export const bookDir = path.resolve(process.env.DATA_DIR || 'data/books/bees');
+export const sharedData = process.env.LOCAL_ONLY==='1' && process.env.SHARED_DATA==='1';
 const readJSON = async (file, fallback) => {
   try { return JSON.parse(await readFile(path.join(bookDir,file),'utf8')); }
   catch(e) { if(e.code==='ENOENT') return fallback; throw e; }
@@ -25,9 +26,23 @@ export async function getBook() {
   const meta=await readJSON('meta.json',{revision:0,title:'Полный курс пчеловодства'});
   const overrides=await readJSON('toc-overrides.json',{});
   const {root}=normalize(html);
-  return {html,...meta,overrides,toc:makeTOC(root,overrides)};
+  return {html,...meta,overrides,toc:makeTOC(root,overrides),sharedData};
 }
-export const getNotes = reader => readJSON(`readers/${reader}/notes.json`,[]);
+export async function getNotes(reader) {
+  if(!sharedData)return readJSON(`readers/${reader}/notes.json`,[]);
+  // Legacy reader files remain intact; merge them into the common local book.
+  const notes=await readJSON('notes.json',[]);
+  let directories=[];
+  try{directories=await readdir(path.join(bookDir,'readers'),{withFileTypes:true});}catch(e){if(e.code!=='ENOENT')throw e;}
+  const byId=new Map();
+  for(const entry of directories.filter(d=>d.isDirectory()&&/^[0-9a-f-]{36}$/.test(d.name)).sort((a,b)=>a.name.localeCompare(b.name))){
+    for(const note of await readJSON(`readers/${entry.name}/notes.json`,[]))byId.set(note.id,note);
+  }
+  for(const note of notes)byId.set(note.id,note);
+  return [...byId.values()];
+}
+export const notesFile = reader => sharedData?'notes.json':`readers/${reader}/notes.json`;
+export const getBookmark = () => readJSON('bookmark.json',null);
 export async function regenerate() {
   const book=await getBook();
   await json('toc.json',book.toc);

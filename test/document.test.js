@@ -40,3 +40,12 @@ test('notes follow reading order regardless of creation order',()=>{
   assert.deepEqual(notes.map(n=>n.id),['one','two']);
   assert.equal(notes[0].part,'ЧАСТЬ I. Общие указания');
 });
+test('image wrapping, alignment, width and font changes survive sanitization',()=>{
+  const html='<p id="text"><span style="font-size:2.8rem;font-family:Georgia">Text</span><img id="picture" class="book-image wrap-right" src="/books/bees/img/test.png" data-align="right" style="width:35%" alt="Picture"></p>';
+  const normalized=normalize(html);
+  assert.equal(normalized.root.querySelector('img').getAttribute('data-align'),'right');
+  assert.equal(normalized.root.querySelector('img').getAttribute('style'),'width:35%');
+  assert.match(normalized.html,/book-image wrap-right/);
+  assert.match(normalized.html,/font-family:Georgia/);
+  assert.equal(normalize(normalized.html).html,normalized.html);
+});

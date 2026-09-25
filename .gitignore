@@ -1,7 +1,7 @@
 node_modules/
 dist/
 .env
-data/books/*/readers/
+data/books/*/readers/*/index.html
 data/books/*/generated/
 data/books/*/history/
 *.log
@@ -10,5 +10,6 @@ public/fonts/*.ttf
 public/fonts/*.woff*
 public/shared/
 .qa-output/
-data/books/*/img/*
-!data/books/bees/img/frontispiece.png
+data/books/**/*.tmp
+public/js/editor.js
+public/js/editor.js.LEGAL.txt
