@@ -5,11 +5,12 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
+import http from 'node:http';
 
 test('file-backed API: content, TOC, notes, isolation, conflicts, image validation',async()=>{
   const dir=await mkdtemp(path.join(tmpdir(),'izdt-test-'));
   for(const file of ['content.html','meta.json','toc-overrides.json'])await cp(`data/books/bees/${file}`,path.join(dir,file));
-  const child=spawn(process.execPath,['server/index.js'],{env:{...process.env,DATA_DIR:dir,PORT:'3099',EDITOR_TOKEN:'integration-test-token',TEST_MODE:'0'},stdio:'pipe'});
+  const child=spawn(process.execPath,['server/index.js'],{env:{...process.env,DATA_DIR:dir,PORT:'3099',EDITOR_TOKEN:'integration-test-token',TEST_MODE:'0',LOCAL_ONLY:'1'},stdio:'pipe'});
   let errors='';child.stderr.on('data',c=>errors+=c);
   const base='http://127.0.0.1:3099';
   const headers={'Content-Type':'application/json',Authorization:'Bearer integration-test-token','X-Reader-Id':randomUUID()};
@@ -23,6 +24,19 @@ test('file-backed API: content, TOC, notes, isolation, conflicts, image validati
       try{await fetch(base+'/api/health');ready=true;break;}catch{await new Promise(r=>setTimeout(r,100));}
     }
     assert.ok(ready,errors);
+    assert.equal((await fetch(base+'/api/health')).headers.get('access-control-allow-origin'),null);
+    assert.equal((await fetch(base+'/api/health',{headers:{Origin:'https://unrelated.example'}})).status,403);
+    assert.equal((await fetch(base+'/api/book',{method:'OPTIONS',headers:{Origin:'https://unrelated.example'}})).status,403);
+    const reboundStatus=await new Promise((resolve,reject)=>{
+      http.get(base+'/api/health',{headers:{Host:'rebound.example:3099'}},res=>{
+        res.resume();resolve(res.statusCode);
+      }).on('error',reject);
+    });
+    assert.equal(reboundStatus,403);
+    const sameOrigin=await fetch(base+'/api/health',{headers:{Origin:base}});
+    assert.equal(sameOrigin.status,200);
+    assert.equal(sameOrigin.headers.get('access-control-allow-origin'),base);
+    assert.equal((await sameOrigin.json()).localOnly,true);
     let book=(await request('/api/book')).data;
     const denied=await request('/api/book','PUT',{html:book.html,revision:book.revision},{Authorization:''});
     assert.equal(denied.status,401);

@@ -10,6 +10,10 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.ttf':'font/ttf','.woff2':'font/woff2','.json':'application/json'};
 const token=process.env.EDITOR_TOKEN;
 const testMode=process.env.TEST_MODE==='1';
+const localOnly=process.env.LOCAL_ONLY==='1';
+const port=Number(process.env.PORT||3000);
+const localHosts=new Set([`127.0.0.1:${port}`,`localhost:${port}`]);
+const localOrigins=new Set([...localHosts].map(host=>`http://${host}`));
 const fail=(status,message)=>Object.assign(new Error(message),{status});
 async function body(req,max=MAX_HTML) {
   let size=0;const chunks=[];
@@ -32,14 +36,21 @@ await regenerate();
 const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Referrer-Policy','same-origin');
-  res.setHeader('Access-Control-Allow-Origin','*'); // No cookies; reader capability and editor token are explicit headers.
+  // Local no-password editing must not be reachable from unrelated websites.
+  // Check Host as well as Origin to prevent DNS rebinding.
+  if(localOnly&&(!localHosts.has(req.headers.host)||req.headers.origin&&!localOrigins.has(req.headers.origin))){
+    res.writeHead(403,{'Content-Type':'application/json; charset=utf-8'});
+    res.end(JSON.stringify({error:'Доступ разрешён только из локального IZDT.'}));return;
+  }
+  if(!localOnly)res.setHeader('Access-Control-Allow-Origin','*');
+  else if(req.headers.origin){res.setHeader('Access-Control-Allow-Origin',req.headers.origin);res.setHeader('Vary','Origin');}
   res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization,X-Reader-Id');
   res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,OPTIONS');
   if(req.method==='OPTIONS'){res.writeHead(204);res.end();return;}
   const send=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
   try{
     const url=new URL(req.url,'http://localhost');const route=decodeURIComponent(url.pathname);
-    if(route==='/api/health')return send({ok:true,mode:testMode?'test':'protected'});
+    if(route==='/api/health')return send({ok:true,mode:testMode?'test':'protected',localOnly});
     if(route==='/api/book'&&req.method==='GET')return send(await getBook());
     if(route==='/api/book'&&req.method==='PUT'){
       editor(req); const data=await readData(req);
@@ -97,4 +108,4 @@ const server=http.createServer(async(req,res)=>{
     const data=await readFile(file);res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream','Cache-Control':'no-cache'});res.end(req.method==='HEAD'?undefined:data);
   }catch(e){send({error:e.code==='ENOENT'?'Не найдено.':e.status?e.message:'Ошибка сервера.'},e.status|| (e.code==='ENOENT'?404:500));if(!e.status&&e.code!=='ENOENT')console.error(e);}
 });
-server.listen(Number(process.env.PORT||3000),process.env.HOST||'127.0.0.1',()=>console.log(`IZDT listening on ${process.env.PORT||3000}; editor ${testMode?'TEST MODE':token?'protected':'disabled'}`));
+server.listen(port,localOnly?'127.0.0.1':process.env.HOST||'127.0.0.1',()=>console.log(`IZDT listening on ${port}; editor ${testMode?'TEST MODE':token?'protected':'disabled'}${localOnly?'; LOCAL ONLY':''}`));

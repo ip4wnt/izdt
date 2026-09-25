@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node server/index.js",
+    "local": "node scripts/start-local.js",
     "dev": "node --watch server/index.js",
     "build": "node scripts/build.js",
     "test": "node --test test/*.test.js"
