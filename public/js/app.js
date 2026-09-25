@@ -34,7 +34,7 @@ document.addEventListener('keydown',e=>{
 try{
   const latest=await api('book');
   if(!state.editing){
-    Object.assign(state,{revision:latest.revision,toc:latest.toc,overrides:latest.overrides});
+    Object.assign(state,{revision:latest.revision,toc:latest.toc,overrides:latest.overrides,styles:latest.styles||{}});editor.applyBookStyles();
     book.innerHTML=latest.html;applyAssetURLs(book);
     const reader=await api('reader');
     if(!state.editing){state.notes=reader.notes;book.innerHTML=reader.content;applyAssetURLs(book);panels.render();}

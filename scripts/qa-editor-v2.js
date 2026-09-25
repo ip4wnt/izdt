@@ -14,7 +14,9 @@ const output=path.resolve(process.env.QA_OUTPUT_DIR||'.qa-output/editor-v2');
 await mkdir(output,{recursive:true});
 await cp('data/books/bees',data,{recursive:true,filter:src=>!/(\/|\\)(readers|history|generated)(\/|\\|$)/.test(src)});
 const extra='<h1 id="title-before">КУРС ПЧЕЛОВОДСТВА</h1><p id="subtitle-before" style="text-align:center">(УХОД ЗА ПЧЁЛАМИ)</p>';
-await writeFile(path.join(data,'content.html'),extra+await readFile(path.join(data,'content.html'),'utf8'));
+// Фикстура с исходной книгой: живые данные меняются редактором и не годятся для проверок обложки.
+await writeFile(path.join(data,'content.html'),extra+await readFile('scripts/fixtures/content.html','utf8'));
+await rm(path.join(data,'styles.json'),{force:true});
 const server=spawn(process.execPath,['server/index.js'],{cwd:root,env:{...process.env,TEST_MODE:'1',LOCAL_ONLY:'1',SHARED_DATA:'1',DATA_DIR:data,PORT:'3189'},stdio:'pipe'});
 const ended=new Promise(resolve=>server.once('exit',resolve));
 let logs='';server.stderr.on('data',b=>logs+=b);
@@ -273,6 +275,45 @@ try{
   assert.ok(await page.locator('.divider-long').count()>1);
   await saved();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
   pass('Enter after heading uses normal size, Ctrl+I, both divider controls');
+  // Компактная панель: панель картинки видна только при выбранном изображении, панель текста при этом скрыта.
+  await page.keyboard.press('e');await page.waitForSelector('#book.ProseMirror');
+  assert.equal(await page.locator('#editor-toolbar').evaluate(el=>Math.round(el.getBoundingClientRect().top)),0);
+  await clickText('honey');
+  assert.ok(await page.locator('#image-tools').isHidden());assert.ok(await page.locator('#text-tools').isVisible());
+  await page.locator('.image-shell:not(.figure-image)').first().click();await page.waitForFunction(()=>!document.querySelector('#image-tools').hidden);
+  assert.ok(await page.locator('#text-tools').isHidden());assert.ok(await page.locator('#image-wrap').isVisible());
+  await page.screenshot({path:path.join(output,'ribbon-image.png'),clip:{x:0,y:0,width:1440,height:160}});
+  await clickText('honey');await page.waitForFunction(()=>document.querySelector('#image-tools').hidden);
+  await page.screenshot({path:path.join(output,'ribbon-compact.png'),clip:{x:0,y:0,width:1440,height:160}});
+  pass('image panel appears only for a selected image and hides the text panel');
+  // Настройка стиля: «Обычный текст» по ширине для всей книги, значение видно в панели и после выхода.
+  await page.locator('#style-settings').click();await page.waitForFunction(()=>!document.querySelector('#style-editor').hidden);
+  assert.equal(await page.locator('#style-target').inputValue(),'p');
+  assert.equal(await page.locator('#style-align').inputValue(),'left');
+  await page.screenshot({path:path.join(output,'ribbon-style-editor.png'),clip:{x:0,y:0,width:1440,height:160}});
+  await page.selectOption('#style-align','justify');await page.locator('#style-apply').click();
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('#honey')).textAlign==='justify');
+  assert.equal(await page.locator('#text-align').inputValue(),'justify');
+  assert.equal(await page.locator('#garden').evaluate(el=>getComputedStyle(el).textAlign),'justify');
+  assert.equal(await page.locator('#subtitle-before').evaluate(el=>getComputedStyle(el).textAlign),'center');
+  await page.locator('#style-close').click();
+  assert.deepEqual(JSON.parse(await readFile(path.join(data,'styles.json'),'utf8')),{p:{align:'justify'}});
+  // Пустые абзацы для отступа между блоками сохраняют высоту строки в читалке.
+  await clickText('future');await page.keyboard.press('Home');await page.keyboard.press('Enter');await page.keyboard.press('Enter');await page.keyboard.press('ArrowUp');
+  await page.waitForFunction(()=>document.querySelectorAll('#book p:empty, #book p:has(> br:only-child)').length>=2);
+  await saved();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('#honey')).textAlign==='justify');
+  await page.waitForFunction(()=>[...document.querySelectorAll('#book p:empty')].filter(el=>el.getBoundingClientRect().height>20).length>=2);
+  const emptyHeights=await page.evaluate(()=>[...document.querySelectorAll('#book p:empty')].map(el=>el.getBoundingClientRect().height));
+  assert.ok(emptyHeights.length>=2&&emptyHeights.every(h=>h>20),`empty paragraph heights ${emptyHeights}`);
+  await page.reload();await page.waitForFunction(()=>document.querySelector('#book #products'));
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('#honey')).textAlign==='justify');
+  await page.waitForFunction(()=>[...document.querySelectorAll('#book p:empty')].filter(el=>el.getBoundingClientRect().height>20).length>=2);
+  await page.keyboard.press('e');await page.waitForSelector('#book.ProseMirror');
+  await clickText('honey');await page.locator('#style-settings').click();await page.locator('#style-reset').click();
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('#honey')).textAlign!=='justify');
+  await page.locator('#style-close').click();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+  pass('named style editing persists to styles.json, applies in editor and reader; empty paragraphs keep their height');
   await page.keyboard.press('c');
   await page.waitForFunction(()=>document.body.classList.contains('panel-open'));
   await page.locator('#edit-toc').click();

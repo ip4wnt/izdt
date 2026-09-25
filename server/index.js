@@ -5,7 +5,7 @@ import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {bookDir,getBook,getNotes,json,transaction,regenerate,saveBook,readerPage,sharedData,notesFile,getBookmark} from './store.js';
 import {parseFragment,resolveNote} from './document.js';
-import {MAX_HTML,MAX_IMAGE,ID_PATTERN,READER_PATTERN} from '../shared/model.js';
+import {MAX_HTML,MAX_IMAGE,ID_PATTERN,READER_PATTERN,STYLE_KEYS,sanitizeStyles} from '../shared/model.js';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.ttf':'font/ttf','.woff2':'font/woff2','.json':'application/json'};
 const token=process.env.EDITOR_TOKEN;
@@ -65,6 +65,17 @@ const server=http.createServer(async(req,res)=>{
       editor(req); const data=await readData(req);
       if(typeof data.html!=='string'||!Number.isInteger(data.revision))throw fail(400,'Неверный формат книги.');
       return send(await transaction(()=>saveBook(data.html,data.revision)));
+    }
+    if(route==='/api/styles'&&req.method==='PUT'){
+      editor(req);const data=await readData(req);
+      if(!data||typeof data!=='object'||!STYLE_KEYS.includes(data.style))throw fail(400,'Неизвестный стиль.');
+      return send(await transaction(async()=>{
+        const book=await getBook();
+        const styles={...book.styles};
+        if(data.reset)delete styles[data.style];
+        else{const clean=sanitizeStyles({[data.style]:data.values});if(clean[data.style])styles[data.style]=clean[data.style];else delete styles[data.style];}
+        await json('styles.json',styles);return regenerate();
+      }));
     }
     if(route==='/api/toc'&&req.method==='PUT'){
       editor(req);const data=await readData(req);

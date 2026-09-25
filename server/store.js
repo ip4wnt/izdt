@@ -2,6 +2,7 @@ import {readFile,writeFile,mkdir,rename,copyFile,readdir} from 'node:fs/promises
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {normalize,makeTOC,annotate} from './document.js';
+import {sanitizeStyles} from '../shared/model.js';
 import {pageHTML} from './template.js';
 
 export const bookDir = path.resolve(process.env.DATA_DIR || 'data/books/bees');
@@ -25,8 +26,9 @@ export async function getBook() {
   const html=await readFile(path.join(bookDir,'content.html'),'utf8');
   const meta=await readJSON('meta.json',{revision:0,title:'Полный курс пчеловодства'});
   const overrides=await readJSON('toc-overrides.json',{});
+  const styles=sanitizeStyles(await readJSON('styles.json',{}));
   const {root}=normalize(html);
-  return {html,...meta,overrides,toc:makeTOC(root,overrides),sharedData};
+  return {html,...meta,overrides,styles,toc:makeTOC(root,overrides),sharedData};
 }
 export async function getNotes(reader) {
   if(!sharedData)return readJSON(`readers/${reader}/notes.json`,[]);

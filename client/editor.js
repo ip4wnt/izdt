@@ -3,7 +3,8 @@ import {EditorView} from 'prosemirror-view';
 import {baseKeymap, toggleMark} from 'prosemirror-commands';
 import {history, undo, redo, closeHistory} from 'prosemirror-history';
 import {keymap} from 'prosemirror-keymap';
-import {schema, parseDocument, serializeDocument, DEFAULTS, styleName, imageDOM} from './schema.js';
+import {schema, parseDocument, serializeDocument, DEFAULTS, applyStyles, styleName, imageDOM} from './schema.js';
+import {STYLE_KEYS, stylesCSS} from '../shared/model.js';
 import {api, applyAssetURLs, notify, base} from '../public/js/api.js';
 import {makeTOC} from '../shared/model.js';
 import {typography, retypeAll} from './typography-plugin.js';
@@ -69,7 +70,7 @@ export function createEditor(state,book,panels) {
     const valueFor=(run,key)=>{
       const d=DEFAULTS[styleName(run.node)]||DEFAULTS.p;
       const direct=run.marks.find(m=>m.type===schema.marks.text_style)?.attrs;
-      return key==='size'?parseFloat(direct?.size||run.node.attrs.size||d.size):direct?.family||run.node.attrs.family||'TT Marxiana';
+      return key==='size'?parseFloat(direct?.size||run.node.attrs.size||d.size):direct?.family||run.node.attrs.family||d.family;
     };
     const marker=runs.length&&runs.every(r=>r.marks.some(m=>m.type===schema.marks.paragraph_label));
     setControl('text-style',marker?'paragraph':common(types));
@@ -92,6 +93,8 @@ export function createEditor(state,book,panels) {
     document.querySelector('[data-command=redo]').disabled=!redo(view.state);
     const figure=figureOf(image), overlay=overlayAt();
     $('image-tools').classList.toggle('has-image',!!image);
+    $('image-tools').hidden=!image;$('text-tools').hidden=!!image;
+    if(image&&!$('style-editor').hidden)closeStyleEditor();
     for(const id of ['image-wrap','image-align','image-width','image-alt','delete-image'])$(id).disabled=!image;
     $('image-wrap').disabled=!image||!!figure;
     $('figure-text').hidden=!image||!!figure?.overlay;
@@ -330,6 +333,33 @@ export function createEditor(state,book,panels) {
     $(id).onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();e.target.dispatchEvent(new Event('change'));}};
   }
   $('text-style').onchange=e=>{applyStyle(e.target.value);e.target.blur();syncToolbar();};
+  // Настройка именованных стилей: правки уходят в styles.json и сразу применяются через <style id="book-styles">.
+  function renderStyles(){applyStyles(state.styles);$('book-styles').textContent=stylesCSS(state.styles);}
+  function fillStyleEditor(){
+    const key=STYLE_KEYS.includes($('style-target').value)?$('style-target').value:'p', d=DEFAULTS[key];
+    $('style-family').value=d.family;$('style-size').value=d.size;$('style-leading').value=d.leading;$('style-indent').value=d.indent;$('style-align').value=d.align;
+    $('style-reset').disabled=!state.styles?.[key];
+  }
+  function closeStyleEditor(){$('style-editor').hidden=true;$('style-settings').setAttribute('aria-expanded','false');}
+  $('style-settings').onclick=()=>{
+    if(!$('style-editor').hidden){closeStyleEditor();return;}
+    const current=$('text-style').value;if(STYLE_KEYS.includes(current))$('style-target').value=current;
+    fillStyleEditor();$('style-editor').hidden=false;$('style-settings').setAttribute('aria-expanded','true');
+  };
+  $('style-target').onchange=fillStyleEditor;
+  $('style-close').onclick=closeStyleEditor;
+  async function saveStyle(reset){
+    const style=$('style-target').value, values={family:$('style-family').value,size:Number($('style-size').value),leading:Number($('style-leading').value),indent:Number($('style-indent').value),align:$('style-align').value};
+    if(!reset&&(!(values.size>=.5&&values.size<=8)||!(values.leading>=.5&&values.leading<=16)||!(values.indent>=0&&values.indent<=10))){notify('Проверьте размер (0,5–8), интерлиньяж (0,5–16) и красную строку (0–10).');return;}
+    try{
+      const result=await api('styles',{method:'PUT',data:reset?{style,reset:true}:{style,values}});
+      state.styles=result.styles||{};state.revision=result.revision;renderStyles();fillStyleEditor();syncToolbar();
+      notify(reset?'Стиль возвращён к исходным значениям.':'Стиль обновлён для всех абзацев.');
+    }catch(e){notify(e.message,12000);}
+  }
+  $('style-apply').onclick=()=>saveStyle(false);
+  $('style-reset').onclick=()=>saveStyle(true);
+  renderStyles();
   $('font-family').onchange=e=>inlineAttribute('family',e.target.value);
   numberControl('font-size',.5,8,v=>inlineAttribute('size',`${v}rem`));
   numberControl('line-height',.5,16,v=>blockAttribute('leading',`${v}rem`));
@@ -456,11 +486,11 @@ export function createEditor(state,book,panels) {
   const observer=new ResizeObserver(entries=>{
     const height=entries[0].target.getBoundingClientRect().height;
     if(height){
-      document.documentElement.style.setProperty('--toolbar-height',`${Math.ceil(height)+20}px`);
+      document.documentElement.style.setProperty('--toolbar-height',`${Math.ceil(height)+12}px`);
       if(view)view.setProps({scrollMargin:{top:Math.ceil(height)+40,bottom:40},scrollThreshold:{top:Math.ceil(height)+40,bottom:40}});
     }
   });
   observer.observe($('editor-toolbar'));
   window.addEventListener('beforeunload',e=>{if(dirty||uploadCount){e.preventDefault();e.returnValue='';}});
-  return {toggle,save,get dirty(){return dirty;}};
+  return {toggle,save,applyBookStyles:renderStyles,get dirty(){return dirty;}};
 }

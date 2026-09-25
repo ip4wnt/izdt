@@ -1,13 +1,10 @@
 import {Schema, DOMParser, DOMSerializer} from 'prosemirror-model';
 
-export const DEFAULTS = {
-  p: {size:2.05, leading:2.1525, indent:3.075, align:'left'},
-  h1: {size:3.3825, leading:5.1752, indent:0, align:'center'},
-  h2: {size:2.46, leading:3.7638, indent:0, align:'center'},
-  h3: {size:2.7675, leading:4.2343, indent:0, align:'center'},
-  small: {size:1.7425, leading:1.7425, indent:3.075, align:'left'},
-  paragraph: {size:2.05, leading:2.1525, indent:3.075, align:'left'}
-};
+import {mergeStyles} from '../shared/model.js';
+
+/** Действующие значения именованных стилей: базовые плюс правки из styles.json. */
+export const DEFAULTS = mergeStyles({});
+export function applyStyles(overrides) { Object.assign(DEFAULTS, mergeStyles(overrides)); }
 const uid = () => `b-${crypto.randomUUID()}`;
 const cssSize = value => /^\d+(?:\.\d+)?rem$/.test(value || '') ? value : null;
 const font = value => (value || '').replace(/["']/g,'').trim() || null;
