@@ -18,8 +18,8 @@
   {
     "id": "products-title",
     "level": 3,
-    "autoTitle": "Пчеловодство и его продукты.",
-    "title": "Пчеловодство и его продукты.",
+    "autoTitle": "Пчеловодство и его продукты.",
+    "title": "Пчеловодство и его продукты.",
     "hidden": false,
     "manual": false
   },
@@ -44,6 +44,38 @@
     "level": 3,
     "autoTitle": "Польза, приносимая пчеловодством земледелию.",
     "title": "Польза, приносимая пчеловодством земледелию.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-4b8b62d7-f8c9-4e06-812e-e4a478d889ea",
+    "level": 1,
+    "autoTitle": "ЧАСТЬ I. ГЛАВА I.",
+    "title": "ЧАСТЬ I. ГЛАВА I.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-ac33edd1-7c7e-4b92-8bd4-e9300e32be66",
+    "level": 2,
+    "autoTitle": "Пчела.",
+    "title": "Пчела.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-ec773793-5325-472e-ac08-7fd7bdfe671e",
+    "level": 3,
+    "autoTitle": "Пчелы на приелетной доске.",
+    "title": "Пчелы на приелетной доске.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-cfb722e1-f137-497b-9b5f-f53bc8abd711",
+    "level": 3,
+    "autoTitle": "Сторожевые, вентилирующие. очищающие.",
+    "title": "Сторожевые, вентилирующие. очищающие.",
     "hidden": false,
     "manual": false
   }
