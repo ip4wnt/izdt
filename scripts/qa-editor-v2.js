@@ -51,6 +51,33 @@ try{
     assert.ok(boxes.body.top>=Math.max(boxes.titles.bottom,boxes.img.bottom)-1,JSON.stringify(boxes));
   }
   await assertOpening();pass('reader cover grows in normal flow even with headings above it');
+  // Regression: destroying an EditorView must not strip the reader's book class.
+  async function readerLayout(){
+    return page.evaluate(()=>{
+      const root=document.querySelector('#book');
+      const elements=['#book','#part-one','#general','#preliminary','#honey','.divider-short','.frontispiece'];
+      return {className:root.className,label:root.getAttribute('aria-label'),spellcheck:root.getAttribute('spellcheck'),
+        elements:elements.map(selector=>{
+          const el=document.querySelector(selector),style=getComputedStyle(el),rect=el.getBoundingClientRect();
+          return {selector,font:style.fontSize,line:style.lineHeight,family:style.fontFamily,weight:style.fontWeight,
+            x:rect.x,width:rect.width,height:rect.height};
+        })};
+    });
+  }
+  const originalLayout=await readerLayout();
+  const originalContent=await readFile(path.join(data,'content.html'),'utf8');
+  await page.screenshot({path:path.join(output,'reader-before-toggle.png')});
+  for(let cycle=0;cycle<3;cycle++){
+    await page.locator('#toggle-editor').click();await page.waitForSelector('#book.ProseMirror');
+    const readerResponse=page.waitForResponse(r=>r.url()===base+'/api/reader'&&r.request().method()==='GET');
+    if(cycle===1)await page.keyboard.press('Escape');else await page.locator('#exit-editor').click();
+    await readerResponse;await page.waitForSelector('#book:not(.ProseMirror)');
+    await page.evaluate(()=>window.scrollTo(0,0));
+    await page.screenshot({path:path.join(output,'reader-after-toggle.png')});
+    assert.deepEqual(await readerLayout(),originalLayout,'reader typography and geometry must survive entering/exiting without edits');
+    assert.equal(await readFile(path.join(data,'content.html'),'utf8'),originalContent,'no-op edit must not write the book');
+  }
+  pass('three no-edit enter/exit cycles preserve reader class, typography, geometry, accessibility and file content');
   await page.keyboard.press('e');await page.waitForSelector('#book.ProseMirror');
   await clickText('footnote-wax');assert.equal(await page.locator('#text-style').inputValue(),'small');
   assert.equal(Number(await page.locator('#font-size').inputValue()),1.7425);
@@ -145,10 +172,19 @@ try{
   await page.keyboard.press('Escape');assert.equal(await page.locator('#book.ProseMirror').count(),1);
   await page.unroute(offline);await saved();
   pass('failed save keeps draft and prevents leaving editor');
-  await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+  const editedReaderResponse=page.waitForResponse(r=>r.url()===base+'/api/reader'&&r.request().method()==='GET');
+  await page.keyboard.press('Escape');await editedReaderResponse;await page.waitForSelector('#book:not(.ProseMirror)');
+  await page.evaluate(()=>window.scrollTo(0,0));
+  const editedReaderLayout=await readerLayout();
+  assert.equal(editedReaderLayout.className,'book');
+  assert.equal(editedReaderLayout.elements[0].font,originalLayout.elements[0].font);
   await page.reload();await page.waitForFunction(()=>document.querySelectorAll('#book img.book-image').length===2);
+  await page.evaluate(()=>document.fonts.ready);
+  await page.evaluate(()=>Promise.all([...document.querySelectorAll('#book img')].map(img=>img.decode())));
+  await page.evaluate(()=>window.scrollTo(0,0));
+  assert.deepEqual(await readerLayout(),editedReaderLayout,'saved reader layout must match a fresh page load');
   assert.ok((await page.locator('#livelihood').textContent()).includes('Проверка офлайн.'));
-  pass('text, image attributes and file-backed book survive save/reload');
+  pass('text, image attributes and reader layout survive save/exit/reload');
   await page.keyboard.press('e');await page.waitForSelector('#book.ProseMirror');
   await clickText('part-one');await page.keyboard.press('End');await page.keyboard.type(' Дополнительный длинный заголовок для проверки роста титула');
   await assertOpening();await saved();

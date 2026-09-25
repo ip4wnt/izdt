@@ -178,7 +178,8 @@ export function createEditor(state,book,panels) {
     if(state.editing) {
       if(!(await save()))return;
       const html=currentHTML();view.destroy();view=null;
-      state.editing=false;book.contentEditable='false';book.classList.remove('ProseMirror');
+      state.editing=false;book.contentEditable='false';
+      book.classList.remove('ProseMirror','ProseMirror-focused','ProseMirror-hideselection');
       document.body.classList.remove('editing');$('editor-toolbar').hidden=true;$('toggle-editor').classList.remove('active');
       book.innerHTML=html;applyAssetURLs(book);
       try{const result=await api('reader');if(!state.editing){state.notes=result.notes;book.innerHTML=result.content;applyAssetURLs(book);panels.render();}}catch(e){notify(e.message);}
@@ -199,7 +200,10 @@ export function createEditor(state,book,panels) {
       ]}),
       dispatchTransaction:dispatch,
       nodeViews:{image:imageView},
-      attributes:{class:'book ProseMirror',spellcheck:'false','aria-label':'Текст книги'},
+      // The mounted article owns .book, spellcheck and its accessible label.
+      // ProseMirror removes every attribute/class declared here on destroy().
+      // Only give it editor-specific attributes; otherwise exiting strips reader styling.
+      attributes:{role:'textbox','aria-multiline':'true'},
       scrollMargin:{top:180,bottom:40},scrollThreshold:{top:180,bottom:40},
       handleDOMEvents:{keydown(){captureNativeSelection();return false;}},
       handlePaste(editor,event){
