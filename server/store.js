@@ -41,7 +41,16 @@ export async function getNotes(reader) {
     for(const note of await readJSON(`readers/${entry.name}/notes.json`,[]))byId.set(note.id,note);
   }
   for(const note of notes)byId.set(note.id,note);
+  // Удалённые заметки помечаются в notes-deleted.json: старые файлы читателей остаются нетронутыми.
+  for(const id of await readJSON('notes-deleted.json',[]))byId.delete(id);
   return [...byId.values()];
+}
+export async function deleteNote(reader,id) {
+  const notes=await getNotes(reader);
+  if(!notes.some(n=>n.id===id))return false;
+  await json(notesFile(reader),notes.filter(n=>n.id!==id));
+  if(sharedData){const deleted=await readJSON('notes-deleted.json',[]);if(!deleted.includes(id)){deleted.push(id);await json('notes-deleted.json',deleted);}}
+  return true;
 }
 export const notesFile = reader => sharedData?'notes.json':`readers/${reader}/notes.json`;
 export const getBookmark = () => readJSON('bookmark.json',null);

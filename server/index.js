@@ -3,7 +3,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {bookDir,getBook,getNotes,json,transaction,regenerate,saveBook,readerPage,sharedData,notesFile,getBookmark} from './store.js';
+import {bookDir,getBook,getNotes,deleteNote,json,transaction,regenerate,saveBook,readerPage,sharedData,notesFile,getBookmark} from './store.js';
 import {parseFragment,resolveNote} from './document.js';
 import {MAX_HTML,MAX_IMAGE,ID_PATTERN,READER_PATTERN,STYLE_KEYS,sanitizeStyles} from '../shared/model.js';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -45,7 +45,7 @@ const server=http.createServer(async(req,res)=>{
   if(!localOnly)res.setHeader('Access-Control-Allow-Origin','*');
   else if(req.headers.origin){res.setHeader('Access-Control-Allow-Origin',req.headers.origin);res.setHeader('Vary','Origin');}
   res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization,X-Reader-Id');
-  res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');
   if(req.method==='OPTIONS'){res.writeHead(204);res.end();return;}
   const send=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
   try{
@@ -102,6 +102,14 @@ const server=http.createServer(async(req,res)=>{
         if(!notes.some(n=>n.blockId===note.blockId&&n.start===note.start&&n.quote===note.quote)){notes.push(note);await json(notesFile(reader),notes);}
         return readerPage(reader);
       }),201);
+    }
+    if(route.startsWith('/api/notes/')&&req.method==='DELETE'){
+      const reader=readerId(req), id=route.slice('/api/notes/'.length);
+      if(!READER_PATTERN.test(id))throw fail(400,'Неверный идентификатор заметки.');
+      return send(await transaction(async()=>{
+        if(!await deleteNote(reader,id))throw fail(404,'Заметка не найдена.');
+        return readerPage(reader);
+      }));
     }
     if(route==='/api/images'&&req.method==='POST'){
       editor(req);const buffer=await body(req,MAX_IMAGE);

@@ -10,9 +10,10 @@ export function makeTOC(root, overrides = {}) {
   return [...root.querySelectorAll('h1,h2,h3,[data-style="paragraph"]')].flatMap(el => {
     if (el.tagName === 'H1') { part = el.textContent.trim(); return []; }
     const level = el.tagName === 'H2' ? 1 : el.tagName === 'H3' ? 2 : 3;
-    const autoTitle = (level === 1 ? `${part} ` : '') + el.textContent.trim().replace(/^\d+\.\s*/, '');
+    const text = el.textContent.trim(), number = level === 3 ? (text.match(/^(\d+)\./)?.[1] || '') : '';
+    const autoTitle = (level === 1 ? `${part} ` : '') + text.replace(/^\d+\.\s*/, '');
     const override = overrides[el.id] || {};
-    return [{id:el.id, level, autoTitle, title:override.title ?? autoTitle, hidden:!!override.hidden, manual:Object.keys(override).length > 0}];
+    return [{id:el.id, level, number, autoTitle, title:override.title ?? autoTitle, hidden:!!override.hidden, manual:Object.keys(override).length > 0}];
   });
 }
 export function sectionFor(root, blockId) {

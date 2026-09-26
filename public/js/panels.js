@@ -1,4 +1,4 @@
-import {api,notify} from './api.js';
+import {api,notify,applyAssetURLs} from './api.js';
 const $=id=>document.getElementById(id);
 export function createPanels(state,book){
   let mode=null,tocEdit=false;
@@ -16,6 +16,7 @@ export function createPanels(state,book){
     for(const item of state.toc){
       if(item.hidden&&!tocEdit)continue;
       const row=document.createElement('div');row.className=`toc-row level-${item.level}${item.hidden?' is-hidden':''}${item.manual?' is-manual':''}`;
+      if(item.level===3){const number=document.createElement('span');number.className='toc-number';number.textContent=item.number?`§ ${item.number}.`:'';row.append(number);}
       if(tocEdit){
         const input=document.createElement('input');input.value=item.title;input.setAttribute('aria-label',`Название: ${item.autoTitle}`);input.maxLength=500;
         input.onchange=()=>override({id:item.id,title:input.value});row.append(input);
@@ -27,6 +28,7 @@ export function createPanels(state,book){
         row.append(actions);
       }else{
         const link=document.createElement('a');link.href=`#${item.id}`;link.textContent=item.title;link.onclick=e=>{e.preventDefault();go(item.id);};row.append(link);
+        if(item.level===3)link.classList.add('toc-title');
       }
       content.append(row);
     }
@@ -50,7 +52,14 @@ export function createPanels(state,book){
       }
       const button=document.createElement('button');button.className='note-link';button.textContent=note.quote;
       button.onclick=()=>{go(note.blockId);const mark=book.querySelector(`[data-notes~="${note.id}"]`);if(mark)mark.scrollIntoView({behavior:'smooth',block:'center'});};
-      group.append(button);
+      const row=document.createElement('div');row.className='note-row';row.append(button);
+      const remove=document.createElement('button');remove.className='note-delete';remove.title='Удалить заметку';remove.setAttribute('aria-label',`Удалить заметку: ${note.quote.slice(0,60)}`);
+      remove.innerHTML='<img src="./assets/icons/x.svg" alt="" width="18" height="18">';
+      remove.onclick=async()=>{
+        try{const result=await api(`notes/${note.id}`,{method:'DELETE'});state.notes=result.notes;book.innerHTML=result.content;applyAssetURLs(book);render();notify('Заметка удалена.');}
+        catch(e){notify(e.message,12000);}
+      };
+      row.append(remove);group.append(row);
       if(note.orphan){const label=document.createElement('p');label.className='orphan-label';label.textContent='Исходный фрагмент изменён. Цитата сохранена.';group.append(label);}
     }
   }

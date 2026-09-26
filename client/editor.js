@@ -222,7 +222,7 @@ export function createEditor(state,book,panels) {
     if(state.editing) {
       if(!(await save()))return;
       const html=currentHTML();view.destroy();view=null;
-      state.editing=false;book.contentEditable='false';
+      state.editing=false;book.contentEditable='false';book.setAttribute('spellcheck','false');
       book.classList.remove('ProseMirror','ProseMirror-focused','ProseMirror-hideselection');
       document.body.classList.remove('editing');$('editor-toolbar').hidden=true;$('toggle-editor').classList.remove('active');
       book.innerHTML=html;applyAssetURLs(book);
@@ -231,7 +231,7 @@ export function createEditor(state,book,panels) {
     }
     panels.close();for(const mark of book.querySelectorAll('mark'))mark.replaceWith(...mark.childNodes);
     const doc=parseDocument(book);
-    state.editing=true;document.body.classList.add('editing');$('editor-toolbar').hidden=false;$('toggle-editor').classList.add('active');
+    state.editing=true;document.body.classList.add('editing');book.setAttribute('spellcheck','true');$('editor-toolbar').hidden=false;$('toggle-editor').classList.add('active');
     view=new EditorView({mount:book},{
       state:EditorState.create({schema,doc,plugins:[
         history(),ids,typography,

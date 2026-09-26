@@ -98,7 +98,9 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .toc-row.level-1{font-size:2.125rem;margin:0 0 1.2rem;text-transform:uppercase}
 .toc-row.level-2{font-family:var(--sans);font-size:2.0244rem;font-weight:700;margin:2.5rem 0 1rem}
 .toc-row.level-1+.level-2{margin-top:0}
-.toc-row.level-3{font-size:2.125rem;line-height:1.35;padding-left:3rem}
+.toc-row.level-3{font-size:2.125rem;line-height:1.35;padding-left:3rem;gap:0}
+.toc-number{flex:none;width:6.2rem;color:var(--ink);opacity:.5;font-variant-numeric:tabular-nums;white-space:nowrap}
+.toc-row.level-3 .toc-title{flex:1;min-width:0}
 .toc-row input{min-width:0;flex:1;border:0;border-bottom:1px solid var(--line);background:transparent;font:inherit;padding:.4rem 0}
 .toc-actions{display:flex;gap:.2rem;flex-shrink:0}.toc-actions button{font:1rem Arial,sans-serif;min-height:2.5rem;min-width:2.5rem;padding:.5rem}
 .toc-row.is-hidden{opacity:.5}.toc-row.is-hidden input{text-decoration:line-through}
@@ -107,7 +109,11 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .empty-notes{max-width:33rem;margin-top:6rem}.empty-notes h3{font-size:2rem;font-weight:400;color:var(--ink)}
 .note-part{font-size:2.125rem;text-transform:uppercase;font-weight:400;margin:0 0 .5rem}
 .note-chapter{font:700 2.0244rem var(--sans);margin:0 0 2.6rem}
-.note-link{display:block;font-size:2.125rem;line-height:1.15;padding:0;margin:0 0 2.4rem;width:100%}
+.note-row{display:flex;align-items:flex-start;gap:.8rem;margin:0 0 2.4rem}
+.note-link{display:block;font-size:2.125rem;line-height:1.15;padding:0;margin:0;flex:1;min-width:0}
+.note-delete{flex:none;width:2.4rem;height:2.4rem;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;opacity:.45;margin-top:.15rem}
+.note-delete:hover,.note-delete:focus-visible{opacity:1;background:var(--line)}
+.note-delete img{width:1.1rem;height:1.1rem}
 .note-group+.note-group{margin-top:4rem}
 .bookmark-ribbon{position:fixed;right:5.3vw;top:-15rem;width:13rem;padding:0;z-index:50;transform-origin:70% 0;transition:transform .55s cubic-bezier(.4,0,.2,1),opacity .4s;filter:drop-shadow(.2rem .25rem .15rem #0002)}
 .bookmark-ribbon img{width:100%;height:auto;display:block}.bookmark-ribbon:hover{background:none;transform:translateY(.7rem) rotate(1deg)}

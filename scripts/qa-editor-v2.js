@@ -279,6 +279,7 @@ try{
   await page.keyboard.press('e');await page.waitForSelector('#book.ProseMirror');
   assert.equal(await page.locator('#editor-toolbar').evaluate(el=>Math.round(el.getBoundingClientRect().top)),0);
   await clickText('honey');
+  assert.equal(await page.locator('#book').getAttribute('spellcheck'),'true');
   assert.ok(await page.locator('#image-tools').isHidden());assert.ok(await page.locator('#text-tools').isVisible());
   await page.locator('.image-shell:not(.figure-image)').first().click();await page.waitForFunction(()=>!document.querySelector('#image-tools').hidden);
   assert.ok(await page.locator('#text-tools').isHidden());assert.ok(await page.locator('#image-wrap').isVisible());
@@ -327,7 +328,26 @@ try{
   await page.waitForFunction(()=>document.querySelector('.toc-row.is-hidden'));
   await page.getByRole('button',{name:'Сбросить ручную правку: Предварительные сведения.'}).click();
   await page.locator('#close-panel').click();
-  pass('TOC rename/reload/hide/reset remains functional');
+  // Номера параграфов: § N. полупрозрачным в отдельной колонке, названия выстроены по одной линии.
+  await page.keyboard.press('c');await page.waitForFunction(()=>document.body.classList.contains('panel-open'));
+  const tocNumbers=await page.evaluate(()=>[...document.querySelectorAll('.toc-row.level-3')].map(row=>({number:row.querySelector('.toc-number')?.textContent,left:Math.round(row.querySelector('.toc-title, input').getBoundingClientRect().left),opacity:getComputedStyle(row.querySelector('.toc-number')).opacity})));
+  assert.ok(tocNumbers.length>2);
+  assert.equal(tocNumbers[0].number,'§ 1.');
+  assert.ok(tocNumbers.every(t=>t.left===tocNumbers[0].left&&t.opacity==='0.5'),JSON.stringify(tocNumbers));
+  await page.screenshot({path:path.join(output,'toc-numbers.png')});
+  await page.locator('#close-panel').click();
+  pass('TOC rename/reload/hide/reset remains functional; paragraph numbers aligned in a dimmed column');
+  async function selectTextNote(id){
+    await page.locator(`#${id}`).scrollIntoViewIfNeeded();
+    const pts=await page.locator(`#${id}`).evaluate(el=>{
+      const r=document.createRange();r.setStart(el.firstChild,0);r.setEnd(el.firstChild,20);
+      const a=r.getClientRects()[0],b=[...r.getClientRects()].at(-1);
+      return {x1:a.left+1,y1:a.top+a.height/2,x2:b.right-1,y2:b.top+b.height/2};
+    });
+    await page.mouse.move(pts.x1,pts.y1);await page.mouse.down();await page.mouse.move(pts.x2,pts.y2,{steps:15});await page.mouse.up();
+    await page.locator('#selection-note').waitFor({state:'visible'});await page.locator('#selection-note').click();
+    await page.waitForSelector(`#${id} mark`);
+  }
   await page.locator('#garden').scrollIntoViewIfNeeded();
   const points=await page.locator('#garden').evaluate(el=>{
     const r=document.createRange();r.setStart(el.firstChild,0);r.setEnd(el.firstChild,35);
@@ -340,6 +360,17 @@ try{
   await page.keyboard.press('b');await page.waitForSelector('.note-link');
   await page.screenshot({path:path.join(output,'notes-shared.png')});
   await page.locator('.note-link').first().click();await page.locator('#close-panel').click();
+  // Удаление заметки из панели: пропадает подсветка в книге и запись в файле; вторая заметка остаётся.
+  await selectTextNote('honey');
+  const notesBefore=JSON.parse(await readFile(path.join(data,'notes.json'),'utf8')).length;
+  await page.keyboard.press('b');await page.waitForFunction(n=>document.querySelectorAll('.note-delete').length===n,notesBefore);
+  await page.screenshot({path:path.join(output,'notes-delete.png')});
+  await page.locator('.note-row').filter({hasText:'Мед есть'}).locator('.note-delete').click();
+  await page.waitForFunction(n=>document.querySelectorAll('.note-delete').length===n-1&&!document.querySelector('#honey mark'),notesBefore);
+  assert.ok(await page.locator('#garden mark').count());
+  assert.equal(JSON.parse(await readFile(path.join(data,'notes.json'),'utf8')).length,notesBefore-1);
+  await page.locator('#close-panel').click();
+  pass('note delete button removes the note, its highlight and the file record');
   await page.locator('#set-bookmark').click();
   await page.waitForFunction(()=>!document.querySelector('#bookmark-ribbon').hidden&&!document.querySelector('#bookmark-ribbon').classList.contains('gone'));
   assert.ok(JSON.parse(await readFile(path.join(data,'bookmark.json'),'utf8')).blockId);

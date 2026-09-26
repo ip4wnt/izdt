@@ -26,6 +26,14 @@ test('Git-backed local data: legacy notes merge, shared notes, persisted bookmar
     assert.equal(other.notes.length,2);
     assert.equal(JSON.parse(await readFile(path.join(dir,'notes.json'),'utf8')).length,2);
     assert.equal(JSON.parse(await readFile(path.join(dir,'readers',legacyReader,'notes.json'),'utf8')).length,1);
+    // Удаление: старая заметка исчезает из общего списка через notes-deleted.json, файл старого читателя не меняется.
+    const removed=await fetch(base+'/api/notes/'+legacy.id,{method:'DELETE',headers});assert.equal(removed.status,200);
+    assert.equal((await removed.json()).notes.length,1);
+    assert.equal((await (await fetch(base+'/api/reader',{headers})).json()).notes.length,1);
+    assert.deepEqual(JSON.parse(await readFile(path.join(dir,'notes-deleted.json'),'utf8')),[legacy.id]);
+    assert.equal(JSON.parse(await readFile(path.join(dir,'readers',legacyReader,'notes.json'),'utf8')).length,1);
+    assert.equal((await fetch(base+'/api/notes/'+legacy.id,{method:'DELETE',headers})).status,404);
+    assert.equal((await fetch(base+'/api/notes/bad-id',{method:'DELETE',headers})).status,400);
     const bookmark={blockId:'honey',offset:40,y:750};
     const put=await fetch(base+'/api/bookmark',{method:'PUT',headers,body:JSON.stringify({bookmark})});assert.equal(put.status,200);
     assert.deepEqual((await (await fetch(base+'/api/bookmark')).json()).bookmark,bookmark);
