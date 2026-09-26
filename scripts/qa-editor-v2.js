@@ -242,6 +242,16 @@ try{
     const shifted=Object.entries(readerBlocks).filter(([id,[top,height]])=>editorBlocks[id]&&(Math.abs(editorBlocks[id][0]-top)>1||Math.abs(editorBlocks[id][1]-height)>1));
   assert.deepEqual(shifted.map(([id])=>id),[],`blocks moved between reader and editor: ${JSON.stringify(shifted.slice(0,3))}`);
   pass('reader and editor share identical block geometry (empty paragraphs, block images, wrapping)');
+  // Индикатор положения в книге: считается по книге, одинаков в обоих режимах, 100% в конце.
+  const progress=()=>page.evaluate(()=>document.querySelector('#reading-progress .progress-value').textContent);
+  const inEditor=await progress();
+  await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');await page.waitForTimeout(100);
+  assert.equal(await progress(),inEditor,'progress differs between editor and reader');
+  const progressBefore=Number(inEditor);await page.evaluate(()=>scrollTo(0,document.documentElement.scrollHeight));await page.waitForTimeout(150);
+  assert.equal(await progress(),'100');assert.ok(progressBefore<100);
+  await page.evaluate(()=>scrollTo(0,0));await page.waitForTimeout(150);assert.equal(await progress(),'0');
+  await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
+  pass('reading progress indicator follows the scroll position in both modes');
   // Title composition is now a figure with a draggable text overlay.
   assert.equal(await page.locator('figure.image-figure').count(),1);
   await clickText('part-one');await page.waitForFunction(()=>!document.querySelector('#overlay-tools').hidden);

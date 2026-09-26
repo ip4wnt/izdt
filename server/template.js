@@ -11,7 +11,7 @@ export function pageHTML(book, base='') {
 <button id="toggle-toc" title="Оглавление (C / С)" aria-label="Оглавление" aria-expanded="false" class="section-symbol">§</button>
 <button id="toggle-notes" title="Заметки (B / И)" aria-label="Заметки" aria-expanded="false">${icon('pencil-line')}</button>
 <button id="set-bookmark" title="Поставить или переставить закладку" aria-label="Поставить закладку">${icon('bookmark')}</button>
-<div class="rail-bottom"><button id="toggle-editor" title="Редактор (Ctrl+E), выход: Esc" aria-label="Редактор"><span class="edit-glyph">A<span>Ⅰ</span></span></button>
+<div class="rail-bottom"><div id="reading-progress" class="reading-progress" role="status" title="Положение в книге"><span class="progress-value">0</span><sup class="progress-unit">%</sup></div><button id="toggle-editor" title="Редактор (Ctrl+E), выход: Esc" aria-label="Редактор"><span class="edit-glyph">A<span>Ⅰ</span></span></button>
 <button id="toggle-theme" title="Светлая / тёмная бумага" aria-label="Сменить тему">${icon('sun-moon')}</button>
 <button id="show-help" title="Клавиши и сведения" aria-label="Помощь">${icon('info')}</button></div>
 </nav>

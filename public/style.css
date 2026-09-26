@@ -19,6 +19,9 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .section-symbol{font-size:1.9375rem}
 .rail-bottom{position:absolute;top:min(52rem,70vh);width:100%}
 .rail-bottom>button{height:4.6rem}
+/* Индикатор положения в книге: процент прочитанного над кнопкой редактора, одинаков в читалке и редакторе. */
+.reading-progress{display:flex;align-items:baseline;justify-content:center;gap:.15rem;margin-bottom:.6rem;font:italic 2rem/1 var(--serif);color:var(--muted);letter-spacing:-.02em;user-select:none;cursor:default}
+.reading-progress .progress-unit{font-size:1rem;line-height:1;vertical-align:baseline;position:relative;top:-.9rem;font-style:normal}
 .rail-bottom #show-help,.rail-bottom #toggle-theme{opacity:0;transition:opacity .2s}
 .rail:hover #show-help,.rail:hover #toggle-theme,.rail:focus-within #show-help,.rail:focus-within #toggle-theme{opacity:.7}
 .edit-glyph{font:700 1.6rem Arial,sans-serif;text-decoration:underline;text-underline-offset:.35rem;letter-spacing:-.08rem}.edit-glyph span{font-size:1.3rem;margin-left:.16rem;text-decoration:none}

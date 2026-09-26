@@ -3,6 +3,7 @@ import {createPanels} from './panels.js';
 import {createEditor} from './editor.js';
 import {initNotes} from './notes.js';
 import {initBookmark} from './bookmark.js';
+import {initProgress} from './progress.js';
 const book=document.getElementById('book');
 const state={...initial,editing:false};
 applyAssetURLs(book);
@@ -10,6 +11,7 @@ const panels=createPanels(state,book);
 const editor=createEditor(state,book,panels);
 initNotes(state,book,panels);
 initBookmark(book);
+initProgress(book);
 document.getElementById('toggle-theme').onclick=()=>{
   document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';
 };
