@@ -232,6 +232,16 @@ try{
   await page.screenshot({path:path.join(output,'responsive-560.png')});
   await page.setViewportSize({width:1440,height:1100});
   pass('responsive: margins, then column (≤20%), then proportional scale');
+  // Геометрия каждого блока в читалке и в редакторе совпадает: вход в редактор не сдвигает текст. Гравюра титула растягивается по сетке, её высота не сравнивается.
+  const blockGeometry=()=>page.evaluate(()=>Object.fromEntries([...document.querySelectorAll('#book [id]')].map(el=>{const r=el.getBoundingClientRect();return [el.id,[Math.round(r.top+scrollY),el.matches('.figure-image')?0:Math.round(r.height)]];})));
+  if(await page.locator('#book.ProseMirror').count()){await saved();await page.keyboard.press('Escape');}
+  await page.waitForSelector('#book:not(.ProseMirror)');
+  const readerBlocks=await blockGeometry();
+  await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
+  const editorBlocks=await blockGeometry();
+    const shifted=Object.entries(readerBlocks).filter(([id,[top,height]])=>editorBlocks[id]&&(Math.abs(editorBlocks[id][0]-top)>1||Math.abs(editorBlocks[id][1]-height)>1));
+  assert.deepEqual(shifted.map(([id])=>id),[],`blocks moved between reader and editor: ${JSON.stringify(shifted.slice(0,3))}`);
+  pass('reader and editor share identical block geometry (empty paragraphs, block images, wrapping)');
   // Title composition is now a figure with a draggable text overlay.
   assert.equal(await page.locator('figure.image-figure').count(),1);
   await clickText('part-one');await page.waitForFunction(()=>!document.querySelector('#overlay-tools').hidden);
@@ -352,6 +362,8 @@ try{
   pass('TOC rename/reload/hide/reset remains functional; paragraph numbers aligned in a dimmed column');
   async function selectTextNote(id){
     await page.locator(`#${id}`).scrollIntoViewIfNeeded();
+    // Ждём окончания плавной прокрутки: событие scroll скрывает кнопку «В заметки».
+    await page.waitForFunction(()=>new Promise(resolve=>{const y=scrollY;setTimeout(()=>resolve(scrollY===y),400);}));
     const pts=await page.locator(`#${id}`).evaluate(el=>{
       const r=document.createRange();r.setStart(el.firstChild,0);r.setEnd(el.firstChild,20);
       const a=r.getClientRects()[0],b=[...r.getClientRects()].at(-1);

@@ -25,7 +25,9 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 /* Адаптивность: сначала сжимаются поля до --gutter, затем полоса набора до 80 %, затем масштаб контента (rem) вместе с полосой. */
 #reading-stage{transition:transform .45s cubic-bezier(.22,.7,.25,1);width:100%;will-change:transform;padding:0 var(--gutter) 0 calc(var(--rail) + var(--gutter))}
 .panel-open #reading-stage{transform:translateX(47vw)}
-.book{width:min(var(--book-width),100%);min-width:calc(var(--book-width)*.8);margin:0 auto;padding-bottom:4rem;min-height:80vh;outline:none;display:flow-root;font-size:var(--body);line-height:2.1525rem;font-family:var(--serif);overflow-wrap:break-word}
+/* white-space:pre-wrap как у ProseMirror, а в редакторе сняты правила contenteditable (line-break:after-white-space) и ProseMirror (лигатуры): перенос строк в читалке и редакторе совпадает. */
+.book.ProseMirror{-webkit-line-break:auto;line-break:auto;font-variant-ligatures:normal}
+.book{white-space:pre-wrap;width:min(var(--book-width),100%);min-width:calc(var(--book-width)*.8);margin:0 auto;padding-bottom:4rem;min-height:80vh;outline:none;display:flow-root;font-size:var(--body);line-height:2.1525rem;font-family:var(--serif);overflow-wrap:break-word}
 .opening{display:grid;grid-template-columns:25.9rem 1fr;align-items:start;position:relative;min-height:66.72rem;padding-bottom:4rem;clear:both}
 .frontispiece{width:53.116rem;height:auto;object-fit:contain;mix-blend-mode:multiply;max-width:100%}
 .opening>.frontispiece{grid-column:1/-1;grid-row:1;margin:2.476rem 0 0 -4.208rem}
@@ -76,6 +78,10 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .book .image-shell.wrap-inline{display:inline-block;vertical-align:middle;margin:.2rem .4rem}
 .book .image-shell>img{display:block;width:100%;height:auto;margin:0;float:none}
 .book .image-shell.wrap-block{display:block}
+/* Одинаковая высота абзацев в читалке и редакторе: абзац с блочной картинкой не схлопывает её поля, а служебные узлы ProseMirror после картинки не создают лишнюю строку. */
+.book p:has(>.wrap-block){display:flow-root}
+.book p>.image-shell.wrap-block~.ProseMirror-separator,.book p>.ProseMirror-separator:has(+.image-shell.wrap-block){position:absolute}
+.book p>.image-shell.wrap-block~.ProseMirror-trailingBreak{display:none}
 .image-resize-handle{display:none;position:absolute;right:-.5rem;bottom:-.5rem;width:1.1rem;height:1.1rem;border:2px solid var(--paper);background:#76602d;cursor:nwse-resize;z-index:2}
 .ProseMirror-selectednode>.image-resize-handle{display:block}
 .ProseMirror-selectednode{outline:2px solid #958752;outline-offset:4px}
