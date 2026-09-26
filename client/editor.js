@@ -167,9 +167,19 @@ export function createEditor(state,book,panels) {
       dom.dataset.align=current.attrs.align;
       dom.style.width=`${current.attrs.width||(current.type.name==='figure_image'?100:45)}%`;
       img.src=base+current.attrs.src;img.alt=current.attrs.alt;img.draggable=false;
+      if(current.attrs.w&&current.attrs.h){img.width=current.attrs.w;img.height=current.attrs.h;}else{img.removeAttribute('width');img.removeAttribute('height');}
       if(current.attrs.id)dom.id=current.attrs.id;
     };
     render();
+    // Картинка без известных пропорций: после загрузки запоминаем естественные размеры в документе (без записи в историю).
+    img.addEventListener('load',()=>{
+      if(current.attrs.w&&current.attrs.h||!(img.naturalWidth>0&&img.naturalHeight>0))return;
+      const pos=getPos();if(typeof pos!=='number')return;
+      const node=editor.state.doc.nodeAt(pos);if(!node||node.type!==current.type)return;
+      const tr=editor.state.tr.setNodeMarkup(pos,undefined,{...node.attrs,w:img.naturalWidth,h:img.naturalHeight}).setMeta('addToHistory',false);
+      const {selection}=editor.state;if(selection instanceof NodeSelection&&selection.from===pos)tr.setSelection(NodeSelection.create(tr.doc,pos));
+      editor.dispatch(tr);
+    });
     handle.addEventListener('pointerdown',e=>{
       e.preventDefault();e.stopPropagation();handle.setPointerCapture(e.pointerId);
       const start=e.clientX,width=dom.getBoundingClientRect().width,container=dom.parentElement.getBoundingClientRect().width;

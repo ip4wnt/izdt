@@ -36,15 +36,19 @@ export function imageAttrs(dom) {
   const align = dom.classList.contains('wrap-right') || dom.dataset.align==='right' ? 'right' : dom.classList.contains('wrap-left') || dom.dataset.align==='left' ? 'left' : 'center';
   const src=dom.getAttribute('src')||'', at=src.indexOf('/books/bees/img/');
   if(at<0 || !/^\/books\/bees\/img\/[a-zA-Z0-9_.-]+\.(png|jpg|jpeg|webp|gif)$/.test(src.slice(at)))return false;
-  return {id:dom.id||null,src:src.slice(at),alt:dom.getAttribute('alt')||'Иллюстрация',mode,align,width:parseFloat(dom.style.width)||null};
+  // Естественные размеры картинки (атрибуты width/height или уже загруженный <img> читалки): браузер знает пропорции до загрузки файла, и текст не скачет.
+  const size=value=>{const n=parseInt(value,10);return n>0?n:null;};
+  const natural=dom.naturalWidth>0&&dom.naturalHeight>0?[dom.naturalWidth,dom.naturalHeight]:[null,null];
+  return {id:dom.id||null,src:src.slice(at),alt:dom.getAttribute('alt')||'Иллюстрация',mode,align,width:parseFloat(dom.style.width)||null,
+    w:size(dom.getAttribute('width'))??natural[0],h:size(dom.getAttribute('height'))??natural[1]};
 }
 const percent=value=>{const n=parseFloat(value);return Number.isFinite(n)&&/%$/.test(value||'')?Math.min(300,Math.max(0,Math.round(n))):null;};
-const imageDefaults={id:{default:null},src:{default:''},alt:{default:''},mode:{default:'block'},align:{default:'center'},width:{default:null}};
+const imageDefaults={id:{default:null},src:{default:''},alt:{default:''},mode:{default:'block'},align:{default:'center'},width:{default:null},w:{default:null},h:{default:null}};
 export function imageDOM(node) {
   const a=node.attrs, figure=node.type.name==='figure_image';
   const mode=a.mode==='square'?(a.align==='right'?'wrap-right':'wrap-left'):`wrap-${a.mode}`;
   return ['img',{...(a.id?{id:a.id}:{}),src:a.src,alt:a.alt,class:figure?'figure-image':`book-image ${mode}`,
-    'data-align':a.align,...(a.width?{style:`width:${a.width}%`}:{})}];
+    'data-align':a.align,...(a.w&&a.h?{width:a.w,height:a.h}:{}),...(a.width?{style:`width:${a.width}%`}:{})}];
 }
 export const schema = new Schema({
   nodes: {

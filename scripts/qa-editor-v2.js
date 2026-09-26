@@ -412,6 +412,21 @@ try{
   await page.locator('#toggle-theme').click();await page.locator('#show-help').click();
   await page.locator('#help[open]').waitFor();await page.locator('.dialog-close').click();
   pass('dark mode and help');
+  // Медленная загрузка картинок: вход в редактор и выход из него не сдвигают текст, потому что <img> знает свои пропорции (width/height).
+  const slowContext=await browser.newContext({viewport:{width:1366,height:768}});const slowPage=await slowContext.newPage();
+  const cdp=await slowContext.newCDPSession(slowPage);await cdp.send('Network.setCacheDisabled',{cacheDisabled:true});
+  await slowPage.route('**/img/**',async route=>{await new Promise(r=>setTimeout(r,400));await route.continue();});
+  await slowPage.goto(base);await slowPage.waitForFunction(()=>document.querySelector('#book #products'));await slowPage.waitForTimeout(1500);
+  await slowPage.evaluate(()=>scrollTo(0,2600));await slowPage.waitForTimeout(400);
+  const anchor=()=>slowPage.evaluate(()=>{const el=[...document.querySelectorAll('#book [id]')].find(e=>e.getBoundingClientRect().top>150);return `${scrollY} ${el.id} ${Math.round(el.getBoundingClientRect().top)}`;});
+  const anchorBefore=await anchor();
+  assert.ok(await slowPage.evaluate(()=>[...document.querySelectorAll('#book img[src]')].every(img=>img.getAttribute('width')&&img.getAttribute('height'))),'every reader image carries width/height');
+  await slowPage.keyboard.press('Control+e');await slowPage.waitForSelector('#book.ProseMirror');
+  for(let i=0;i<6;i++){assert.equal(await anchor(),anchorBefore,`text moved after entering the editor (sample ${i})`);await slowPage.waitForTimeout(150);}
+  await slowPage.keyboard.press('Escape');await slowPage.waitForSelector('#book:not(.ProseMirror)');
+  for(let i=0;i<6;i++){assert.equal(await anchor(),anchorBefore,`text moved after leaving the editor (sample ${i})`);await slowPage.waitForTimeout(150);}
+  await slowContext.close();
+  pass('slow images: entering and leaving the editor keeps the reading position');
   assert.deepEqual(errors,[]);pass('no uncaught browser errors');
   await writeFile(path.join(output,'results.json'),JSON.stringify({checks,errors,serverLogs:logs},null,2));
 }catch(e){

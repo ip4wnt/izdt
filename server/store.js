@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {normalize,makeTOC,annotate} from './document.js';
 import {sanitizeStyles} from '../shared/model.js';
 import {pageHTML} from './template.js';
+import {fillImageSizes} from './image-size.js';
 
 export const bookDir = path.resolve(process.env.DATA_DIR || 'data/books/bees');
 export const sharedData = process.env.LOCAL_ONLY==='1' && process.env.SHARED_DATA==='1';
@@ -28,7 +29,9 @@ export async function getBook() {
   const overrides=await readJSON('toc-overrides.json',{});
   const styles=sanitizeStyles(await readJSON('styles.json',{}));
   const {root}=normalize(html);
-  return {html,...meta,overrides,styles,toc:makeTOC(root,overrides),sharedData};
+  // Старые картинки без width/height получают размеры из файлов при выдаче; в content.html они попадут при следующем сохранении.
+  const sized=await fillImageSizes(root,bookDir);
+  return {html:sized?root.innerHTML:html,...meta,overrides,styles,toc:makeTOC(root,overrides),sharedData};
 }
 export async function getNotes(reader) {
   if(!sharedData)return readJSON(`readers/${reader}/notes.json`,[]);
@@ -64,6 +67,7 @@ export async function saveBook(html,revision) {
   const previous=await getBook();
   if(revision!==previous.revision) throw Object.assign(new Error('Книга изменена в другой вкладке. Скопируйте свои правки и обновите страницу.'),{status:409});
   const normalized=normalize(html);
+  await fillImageSizes(normalized.root,bookDir);normalized.html=normalized.root.innerHTML;
   if(!normalized.root.textContent.trim()) throw Object.assign(new Error('Книга не может быть пустой.'),{status:400});
   await mkdir(path.join(bookDir,'history'),{recursive:true});
   await copyFile(path.join(bookDir,'content.html'),path.join(bookDir,'history',`${previous.revision}-${Date.now()}.html`));
