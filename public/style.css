@@ -35,6 +35,9 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .book h3{font-size:2.7675rem;font-weight:400;text-align:center;line-height:1.53;margin:1.8rem 0 3rem}
 .book p,.book li,.book blockquote{font-size:var(--body);line-height:2.1525rem;font-weight:400;margin:0;text-indent:3.075rem}
 .book p{overflow-wrap:break-word;text-wrap:pretty}
+/* Переносы по словарю (lang="ru"): слово от 6 букв, не короче 3 букв по краям, не больше двух переносов подряд, последняя строка абзаца без переноса */
+.book p{hyphens:auto;-webkit-hyphens:auto;hyphenate-limit-chars:6 3 3;hyphenate-limit-lines:2;hyphenate-limit-last:always}
+.book h1,.book h2,.book h3,.book .image-overlay p,.book .signature,.book [data-style=paragraph]{hyphens:manual;-webkit-hyphens:manual}
 .book :is(p,h1,h2,h3):empty::before{content:"\200B"}
 .book [data-style=paragraph]{font-style:italic}
 .book .small{font-size:1.7425rem;line-height:1.7425rem}
