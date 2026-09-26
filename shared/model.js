@@ -6,12 +6,13 @@ export const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/;
 export const READER_PATTERN = /^[0-9a-f-]{36}$/;
 export const escapeHTML = (text = '') => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function makeTOC(root, overrides = {}) {
-  let part = '';
-  return [...root.querySelectorAll('h1,h2,h3,[data-style="paragraph"]')].flatMap(el => {
-    if (el.tagName === 'H1') { part = el.textContent.trim(); return []; }
+  // Заголовки берутся как есть: ничего не добавляется от системы, для дополнений есть ручные правки.
+  // Параграфы нумеруются сквозным образом по всей книге.
+  let count = 0;
+  return [...root.querySelectorAll('h2,h3,[data-style="paragraph"]')].flatMap(el => {
     const level = el.tagName === 'H2' ? 1 : el.tagName === 'H3' ? 2 : 3;
-    const text = el.textContent.trim(), number = level === 3 ? (text.match(/^(\d+)\./)?.[1] || '') : '';
-    const autoTitle = (level === 1 ? `${part} ` : '') + text.replace(/^\d+\.\s*/, '');
+    const number = level === 3 ? String(++count) : '';
+    const autoTitle = el.textContent.trim().replace(/^\d+\.\s*/, '');
     const override = overrides[el.id] || {};
     return [{id:el.id, level, number, autoTitle, title:override.title ?? autoTitle, hidden:!!override.hidden, manual:Object.keys(override).length > 0}];
   });

@@ -19,6 +19,7 @@ help.querySelector('.dialog-close').onclick=()=>help.close();
 document.addEventListener('keydown',e=>{
   if(help.open)return;
   if((e.ctrlKey||e.metaKey)&&e.code==='KeyS'&&state.editing){e.preventDefault();editor.save();return;}
+  if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&e.code==='KeyE'){e.preventDefault();editor.toggle();return;}
   if(e.key==='Escape'){
     document.getElementById('selection-note').hidden=true;
     if(state.editing){e.preventDefault();editor.toggle();}else panels.close();
@@ -26,8 +27,7 @@ document.addEventListener('keydown',e=>{
   }
   const target=e.target;
   if(target.isContentEditable||target.closest('input,textarea,select')||e.ctrlKey||e.metaKey||e.altKey)return;
-  if(e.code==='KeyE'){e.preventDefault();editor.toggle();}
-  else if(e.code==='KeyB'){e.preventDefault();panels.toggle('notes');}
+  if(e.code==='KeyB'){e.preventDefault();panels.toggle('notes');}
   else if(e.code==='KeyC'){e.preventDefault();panels.toggle('toc');}
 });
 // Restore current book before reader-specific annotations. Static HTML remains readable without JS.

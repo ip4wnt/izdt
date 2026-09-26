@@ -1,7 +1,7 @@
 @font-face{font-family:"TT Marxiana";src:url("./fonts/marxiana.ttf") format("truetype");font-style:normal;font-weight:400;font-display:swap}
 @font-face{font-family:"TT Marxiana";src:url("./fonts/marxiana-italic.ttf") format("truetype");font-style:italic;font-weight:400;font-display:swap}
 @font-face{font-family:"Akzidenz-Grotesk Pro";src:url("./fonts/akzidenz-boldcn.ttf") format("truetype");font-weight:700;font-display:swap}
-:root{font-size:100%;--paper:#f2f2f2;--panel:#fafafa;--ink:#111;--muted:#636363;--line:#c9c9c9;--highlight:#ffff00;--ui:1rem;--body:2.05rem;--rail:5.94rem;--book-width:67.074rem;--panel-width:57.45vw;--serif:"TT Marxiana",Georgia,serif;--sans:"Akzidenz-Grotesk Pro","Arial Narrow",sans-serif;color-scheme:light}
+:root{font-size:100%;--gutter:2rem;--paper:#f2f2f2;--panel:#fafafa;--ink:#111;--muted:#636363;--line:#c9c9c9;--highlight:#ffff00;--ui:1rem;--body:2.05rem;--rail:5.94rem;--book-width:67.074rem;--panel-width:57.45vw;--serif:"TT Marxiana",Georgia,serif;--sans:"Akzidenz-Grotesk Pro","Arial Narrow",sans-serif;color-scheme:light}
 :root[data-theme=dark]{--paper:#23231f;--panel:#2e2e29;--ink:#deded1;--muted:#aaa99c;--line:#53534b;color-scheme:dark}
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);overflow-x:hidden}
 body::after{content:"";position:fixed;inset:0;z-index:70;pointer-events:none;background:url("./assets/noise.png") repeat;opacity:.14;mix-blend-mode:multiply}
@@ -22,9 +22,10 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .rail-bottom #show-help,.rail-bottom #toggle-theme{opacity:0;transition:opacity .2s}
 .rail:hover #show-help,.rail:hover #toggle-theme,.rail:focus-within #show-help,.rail:focus-within #toggle-theme{opacity:.7}
 .edit-glyph{font:700 1.6rem Arial,sans-serif;text-decoration:underline;text-underline-offset:.35rem;letter-spacing:-.08rem}.edit-glyph span{font-size:1.3rem;margin-left:.16rem;text-decoration:none}
-#reading-stage{transition:transform .45s cubic-bezier(.22,.7,.25,1);width:100%;will-change:transform}
+/* Адаптивность: сначала сжимаются поля до --gutter, затем полоса набора до 80 %, затем масштаб контента (rem) вместе с полосой. */
+#reading-stage{transition:transform .45s cubic-bezier(.22,.7,.25,1);width:100%;will-change:transform;padding:0 var(--gutter) 0 calc(var(--rail) + var(--gutter))}
 .panel-open #reading-stage{transform:translateX(47vw)}
-.book{width:var(--book-width);margin:0 auto;padding-bottom:4rem;min-height:80vh;outline:none;display:flow-root;font-size:var(--body);line-height:2.1525rem;font-family:var(--serif);overflow-wrap:break-word}
+.book{width:min(var(--book-width),100%);min-width:calc(var(--book-width)*.8);margin:0 auto;padding-bottom:4rem;min-height:80vh;outline:none;display:flow-root;font-size:var(--body);line-height:2.1525rem;font-family:var(--serif);overflow-wrap:break-word}
 .opening{display:grid;grid-template-columns:25.9rem 1fr;align-items:start;position:relative;min-height:66.72rem;padding-bottom:4rem;clear:both}
 .frontispiece{width:53.116rem;height:auto;object-fit:contain;mix-blend-mode:multiply;max-width:100%}
 .opening>.frontispiece{grid-column:1/-1;grid-row:1;margin:2.476rem 0 0 -4.208rem}
@@ -32,6 +33,8 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .opening-titles{grid-column:2;grid-row:1;margin-top:36.75rem;width:100%;text-align:center;position:relative;min-width:0}
 .book h1{font-size:3.3825rem;font-weight:400;text-transform:uppercase;text-align:center;line-height:1.53;margin:0 0 1rem}
 .book h2{font-size:2.46rem;font-weight:400;text-transform:uppercase;text-align:center;line-height:1.53;margin:0}
+/* Отступ перед новым блоком (частью, главой) в основном потоке книги; внутри титула и плашек отступов нет. */
+.book>h1{margin-top:7rem}.book>h2{margin-top:5rem}.book>h1+h2{margin-top:0}.book>:is(h1,h2):first-child{margin-top:0}
 .book h3{font-size:2.7675rem;font-weight:400;text-align:center;line-height:1.53;margin:1.8rem 0 3rem}
 .book p,.book li,.book blockquote{font-size:var(--body);line-height:2.1525rem;font-weight:400;margin:0;text-indent:3.075rem}
 .book p{overflow-wrap:break-word;text-wrap:pretty}
@@ -85,7 +88,7 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .book [id]{scroll-margin-top:6rem}
 .book .note-flash{animation:noteFlash 1.6s ease}
 @keyframes noteFlash{0%,55%{background:#ffff00}100%{background:transparent}}
-.colophon{width:var(--book-width);margin:0 auto 7rem;border-top:1px solid var(--line);padding-top:2rem;color:var(--muted);font-size:1.1rem;line-height:1.4}
+.colophon{width:min(var(--book-width),100%);min-width:calc(var(--book-width)*.8);margin:0 auto 7rem;border-top:1px solid var(--line);padding-top:2rem;color:var(--muted);font-size:1.1rem;line-height:1.4}
 .colophon svg{display:block}
 .panel{position:fixed;inset:0 auto 0 var(--rail);width:var(--panel-width);background:var(--panel);z-index:40;padding:2.9rem 3.9rem;overflow:auto;overscroll-behavior:contain;transform:translateX(calc(-100% - 6rem));transition:transform .45s cubic-bezier(.22,.7,.25,1);scrollbar-width:thin;scrollbar-color:var(--line) transparent}
 .panel-open .panel{transform:translateX(0)}
@@ -118,7 +121,7 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .bookmark-ribbon{position:fixed;right:5.3vw;top:-15rem;width:13rem;padding:0;z-index:50;transform-origin:70% 0;transition:transform .55s cubic-bezier(.4,0,.2,1),opacity .4s;filter:drop-shadow(.2rem .25rem .15rem #0002)}
 .bookmark-ribbon img{width:100%;height:auto;display:block}.bookmark-ribbon:hover{background:none;transform:translateY(.7rem) rotate(1deg)}
 .bookmark-ribbon.gone{transform:translate(6rem,-50rem) rotate(12deg);opacity:0;pointer-events:none}
-.toolbar{position:fixed;top:0;left:calc(var(--rail) + 1.1rem);right:1.1rem;z-index:55;background:var(--panel);padding:.35rem .9rem .3rem;border:1px solid var(--line);border-top:0;box-shadow:0 .3rem 1rem #0001;font:1.15rem/1.3 Arial,sans-serif;max-height:48vh;overflow-y:auto}
+.toolbar{position:fixed;bottom:0;left:calc(var(--rail) + 1.1rem);right:1.1rem;z-index:55;background:var(--panel);padding:.35rem .9rem .3rem;border:1px solid var(--line);border-bottom:0;box-shadow:0 -.3rem 1rem #0001;font:1.15rem/1.3 Arial,sans-serif;max-height:48vh;overflow-y:auto}
 .ribbon-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.25rem 0}
 .ribbon-row+.ribbon-row{border-top:1px solid var(--line);padding-top:.4rem}
 .main-row{flex-wrap:nowrap;align-items:flex-start}
@@ -143,10 +146,10 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .image-alt{width:20rem;max-width:32vw}
 .overlay-controls,.style-editor{color:var(--ink)}
 .style-editor{background:var(--paper);margin:0 -.9rem -.3rem;padding:.4rem .9rem}
-.editing #reading-stage{padding-top:var(--toolbar-height,16rem)}
+.editing #reading-stage{padding-bottom:var(--toolbar-height,16rem)}
 .editing .book{caret-color:var(--ink)}.editing .book:focus{outline:none}
-.editing .book [id]{scroll-margin-top:calc(var(--toolbar-height,16rem) + 2rem)}
-.editing{scroll-padding-top:var(--toolbar-height,16rem)}
+.editing .book [id]{scroll-margin-bottom:calc(var(--toolbar-height,16rem) + 2rem)}
+.editing{scroll-padding-bottom:var(--toolbar-height,16rem)}
 .selection-note{position:fixed;z-index:65;display:flex;align-items:center;gap:.6rem;background:#20201c;color:white;padding:.7rem 1rem;font:1rem Arial,sans-serif;box-shadow:0 .25rem 1rem #0002}
 .selection-note:hover{background:#36362e}.selection-note img{filter:invert(1);width:1.25rem;height:1.25rem}
 .notice{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);max-width:55rem;z-index:90;background:var(--ink);color:var(--paper);padding:1rem 1.5rem;font:1rem/1.5 Arial,sans-serif;box-shadow:0 .25rem 1rem #0002}
@@ -158,7 +161,7 @@ dialog dl{display:grid;grid-template-columns:7rem 1fr;gap:.8rem}dialog dt{font-f
 @media(max-width:1600px){:root{font-size:75%}}
 @media(max-width:1400px){:root{font-size:66.6667%;--ui:1.15rem}}
 @media(max-width:1600px){.insert-controls button span:not(.glyph){display:none}}
-@media(max-width:1100px){:root{font-size:62.5%;--book-width:67rem}.toolbar{font-size:1.25rem}.toolbar label{font-size:1.1rem}.toolbar input,.toolbar select,.toolbar button{font-size:1.25rem}.insert-controls button span:not(.glyph){display:none}}
-@media(max-width:900px){body{min-width:900px}.book,.colophon{margin-left:15rem}.rail{background:var(--paper)}.panel{width:650px}.panel-open #reading-stage{transform:translateX(620px)}}
+/* Ниже 1100px масштаб фиксирован (10px) пока полоса не сжалась до 80 %; далее rem уменьшается пропорционально ширине окна (20px — запас на полосу прокрутки). 63.6rem = 0.8·67.074 + 5.94 + 2·2. */
+@media(max-width:1100px){:root{font-size:clamp(4px,calc((100vw - 20px)/63.6),10px);--book-width:67.074rem}.toolbar{font-size:1.25rem}.toolbar label{font-size:1.1rem}.toolbar input,.toolbar select,.toolbar button{font-size:1.25rem}.insert-controls button span:not(.glyph){display:none}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 @media print{.rail,.panel,.toolbar,.bookmark-ribbon,.notice,body::after{display:none!important}#reading-stage{transform:none!important}.book{width:100%}:root{font-size:65%}}

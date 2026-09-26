@@ -12,10 +12,10 @@ test('normalization preserves IDs and assigns unique IDs',()=>{
   assert.equal(normalize(a.html).html,a.html);
 });
 test('TOC follows h2, h3 and paragraph and persists overrides',()=>{
-  const {root}=normalize('<h1>I.</h1><h2 id="part">Part</h2><h3 id="chapter">Chapter</h3><p><span id="para" data-style="paragraph">1. Paragraph</span>Text</p><h3 id="new">New</h3>');
+  const {root}=normalize('<h1>I.</h1><h2 id="part">Part</h2><h3 id="chapter">Chapter</h3><p><span id="para" data-style="paragraph">1. Paragraph</span>Text</p><h3 id="new">New</h3><p><span id="para2" data-style="paragraph">Second</span>Text</p>');
   const toc=makeTOC(root,{chapter:{title:'Manual'},para:{hidden:true}});
-  assert.deepEqual(toc.map(t=>t.level),[1,2,3,2]);
-  assert.equal(toc[0].title,'I. Part');assert.equal(toc[1].title,'Manual');assert.equal(toc[2].hidden,true);assert.equal(toc[3].title,'New');
+  assert.deepEqual(toc.map(t=>t.level),[1,2,3,2,3]);
+  assert.equal(toc[0].title,'Part');assert.equal(toc[2].number,'1');assert.equal(toc[1].title,'Manual');assert.equal(toc[2].hidden,true);assert.equal(toc[3].title,'New');assert.equal(toc[4].number,'2');
 });
 test('highlight spans inline formatting, supports overlaps, retains text',()=>{
   const html='<p id="a">Hello <em>beautiful</em> world.</p>';

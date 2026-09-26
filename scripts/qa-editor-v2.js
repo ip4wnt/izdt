@@ -80,7 +80,7 @@ try{
     assert.equal(await readFile(path.join(data,'content.html'),'utf8'),originalContent,'no-op edit must not write the book');
   }
   pass('three no-edit enter/exit cycles preserve reader class, typography, geometry, accessibility and file content');
-  await page.keyboard.press('e');await page.waitForSelector('#book.ProseMirror');
+  await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
   await clickText('footnote-wax');assert.equal(await page.locator('#text-style').inputValue(),'small');
   assert.equal(Number(await page.locator('#font-size').inputValue()),1.7425);
   await clickText('honey');assert.equal(await page.locator('#text-style').inputValue(),'p');
@@ -207,13 +207,13 @@ try{
   assert.deepEqual(await readerLayout(),editedReaderLayout,'saved reader layout must match a fresh page load');
   assert.ok((await page.locator('#livelihood').textContent()).includes('Проверка офлайн.'));
   pass('text, image attributes and reader layout survive save/exit/reload');
-  await page.keyboard.press('e');await page.waitForSelector('#book.ProseMirror');
+  await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
   await clickText('part-one');await page.keyboard.press('End');await page.keyboard.type(' Дополнительный длинный заголовок для проверки роста титула');
   await assertOpening();await saved();
   await page.evaluate(()=>window.scrollTo(0,0));
   const toolbar=await page.locator('#editor-toolbar').boundingBox();
   const before=await page.locator('#title-before').boundingBox();
-  assert.ok(before.y>=toolbar.y+toolbar.height);
+  assert.ok(before.y>=0&&toolbar.y>0,'toolbar at the bottom does not cover the top of the page');
   await page.screenshot({path:path.join(output,'editor-1440.png')});
   await page.setViewportSize({width:1000,height:900});await page.evaluate(()=>window.scrollTo(0,0));
   const fit=await page.locator('#editor-toolbar').boundingBox();assert.ok(fit.x>=0&&fit.x+fit.width<=1000);
@@ -221,6 +221,17 @@ try{
   await page.setViewportSize({width:1920,height:1200});await page.evaluate(()=>window.scrollTo(0,0));
   await page.screenshot({path:path.join(output,'editor-1920.png')});
   pass('long cover titles grow without overlapping body; toolbar fits 1000/1440/1920');
+  // Адаптивность: поля → полоса набора (до 80 %) → масштаб контента вместе с полосой; книга не выходит за окно.
+  const geometry=async width=>{await page.setViewportSize({width,height:900});return page.evaluate(()=>{const b=document.querySelector('#book').getBoundingClientRect();const rail=document.querySelector('.rail').getBoundingClientRect();return {rem:parseFloat(getComputedStyle(document.documentElement).fontSize),width:b.width,left:b.left-rail.right,right:document.documentElement.clientWidth-b.right,scroll:document.documentElement.scrollWidth<=document.documentElement.clientWidth};});};
+  const wide=await geometry(1000), narrowMargins=await geometry(785), column=await geometry(700), scaled=await geometry(560);
+  assert.ok(wide.left>narrowMargins.left&&Math.abs(narrowMargins.left-narrowMargins.right)<2,'margins shrink symmetrically');
+  assert.ok(Math.round(wide.width)===Math.round(narrowMargins.width)&&wide.rem===narrowMargins.rem,'column and scale unchanged while margins shrink');
+  assert.ok(column.width<narrowMargins.width&&column.width>=narrowMargins.width*0.8-1&&column.rem===wide.rem,'column shrinks up to 20% at constant scale');
+  assert.ok(scaled.rem<column.rem&&scaled.width<column.width&&scaled.scroll,'below that both the scale and column shrink together');
+  for(const g of [wide,narrowMargins,column,scaled])assert.ok(g.scroll&&g.right>=0&&g.left>=0,JSON.stringify(g));
+  await page.screenshot({path:path.join(output,'responsive-560.png')});
+  await page.setViewportSize({width:1440,height:1100});
+  pass('responsive: margins, then column (≤20%), then proportional scale');
   // Title composition is now a figure with a draggable text overlay.
   assert.equal(await page.locator('figure.image-figure').count(),1);
   await clickText('part-one');await page.waitForFunction(()=>!document.querySelector('#overlay-tools').hidden);
@@ -261,7 +272,7 @@ try{
   await saved();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
   await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:path.join(output,'figure-overlay-reader.png')});
   await assertOpening();
-  await page.keyboard.press('e');await page.waitForSelector('#book.ProseMirror');
+  await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
   pass('figure overlay: numeric position, drag, resize, detach, add text, convert inline image, delete keeps text; reader shows it');
   await clickText('garden');await page.keyboard.press('Control+End');await page.keyboard.press('Enter');await page.keyboard.type('Новая строка');
   await page.selectOption('#text-style','h3');
@@ -276,22 +287,22 @@ try{
   await saved();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
   pass('Enter after heading uses normal size, Ctrl+I, both divider controls');
   // Компактная панель: панель картинки видна только при выбранном изображении, панель текста при этом скрыта.
-  await page.keyboard.press('e');await page.waitForSelector('#book.ProseMirror');
-  assert.equal(await page.locator('#editor-toolbar').evaluate(el=>Math.round(el.getBoundingClientRect().top)),0);
+  await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
+  assert.equal(await page.locator('#editor-toolbar').evaluate(el=>Math.round(window.innerHeight-el.getBoundingClientRect().bottom)),0,'ribbon is docked to the bottom edge');
   await clickText('honey');
   assert.equal(await page.locator('#book').getAttribute('spellcheck'),'true');
   assert.ok(await page.locator('#image-tools').isHidden());assert.ok(await page.locator('#text-tools').isVisible());
   await page.locator('.image-shell:not(.figure-image)').first().click();await page.waitForFunction(()=>!document.querySelector('#image-tools').hidden);
   assert.ok(await page.locator('#text-tools').isHidden());assert.ok(await page.locator('#image-wrap').isVisible());
-  await page.screenshot({path:path.join(output,'ribbon-image.png'),clip:{x:0,y:0,width:1440,height:160}});
+  await page.screenshot({path:path.join(output,'ribbon-image.png'),clip:{x:0,y:940,width:1440,height:160}});
   await clickText('honey');await page.waitForFunction(()=>document.querySelector('#image-tools').hidden);
-  await page.screenshot({path:path.join(output,'ribbon-compact.png'),clip:{x:0,y:0,width:1440,height:160}});
+  await page.screenshot({path:path.join(output,'ribbon-compact.png'),clip:{x:0,y:940,width:1440,height:160}});
   pass('image panel appears only for a selected image and hides the text panel');
   // Настройка стиля: «Обычный текст» по ширине для всей книги, значение видно в панели и после выхода.
   await page.locator('#style-settings').click();await page.waitForFunction(()=>!document.querySelector('#style-editor').hidden);
   assert.equal(await page.locator('#style-target').inputValue(),'p');
   assert.equal(await page.locator('#style-align').inputValue(),'left');
-  await page.screenshot({path:path.join(output,'ribbon-style-editor.png'),clip:{x:0,y:0,width:1440,height:160}});
+  await page.screenshot({path:path.join(output,'ribbon-style-editor.png'),clip:{x:0,y:940,width:1440,height:160}});
   await page.selectOption('#style-align','justify');await page.locator('#style-apply').click();
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('#honey')).textAlign==='justify');
   assert.equal(await page.locator('#text-align').inputValue(),'justify');
@@ -310,7 +321,7 @@ try{
   await page.reload();await page.waitForFunction(()=>document.querySelector('#book #products'));
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('#honey')).textAlign==='justify');
   await page.waitForFunction(()=>[...document.querySelectorAll('#book p:empty')].filter(el=>el.getBoundingClientRect().height>20).length>=2);
-  await page.keyboard.press('e');await page.waitForSelector('#book.ProseMirror');
+  await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
   await clickText('honey');await page.locator('#style-settings').click();await page.locator('#style-reset').click();
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('#honey')).textAlign!=='justify');
   await page.locator('#style-close').click();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
@@ -332,7 +343,9 @@ try{
   await page.keyboard.press('c');await page.waitForFunction(()=>document.body.classList.contains('panel-open'));
   const tocNumbers=await page.evaluate(()=>[...document.querySelectorAll('.toc-row.level-3')].map(row=>({number:row.querySelector('.toc-number')?.textContent,left:Math.round(row.querySelector('.toc-title, input').getBoundingClientRect().left),opacity:getComputedStyle(row.querySelector('.toc-number')).opacity})));
   assert.ok(tocNumbers.length>2);
-  assert.equal(tocNumbers[0].number,'§ 1.');
+  assert.deepEqual(tocNumbers.map(t=>t.number),tocNumbers.map((_,i)=>`§ ${i+1}.`),'paragraph numbers run continuously through the book');
+  const tocBook=await (await fetch(base+'/api/book')).json();
+  assert.equal(tocBook.toc.find(i=>i.level===1).autoTitle,await page.locator('#book h2').first().evaluate(el=>el.textContent.trim()),'H2 title is taken verbatim, without the H1 part prefix');
   assert.ok(tocNumbers.every(t=>t.left===tocNumbers[0].left&&t.opacity==='0.5'),JSON.stringify(tocNumbers));
   await page.screenshot({path:path.join(output,'toc-numbers.png')});
   await page.locator('#close-panel').click();

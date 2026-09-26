@@ -248,7 +248,7 @@ export function createEditor(state,book,panels) {
       // ProseMirror removes every attribute/class declared here on destroy().
       // Only give it editor-specific attributes; otherwise exiting strips reader styling.
       attributes:{role:'textbox','aria-multiline':'true'},
-      scrollMargin:{top:180,bottom:40},scrollThreshold:{top:180,bottom:40},
+      scrollMargin:{top:40,bottom:180},scrollThreshold:{top:40,bottom:180},
       handleDOMEvents:{keydown(){captureNativeSelection();return false;}},
       handlePaste(editor,event){
         const file=[...event.clipboardData.items].find(i=>i.type.startsWith('image/'))?.getAsFile();
@@ -487,7 +487,7 @@ export function createEditor(state,book,panels) {
     const height=entries[0].target.getBoundingClientRect().height;
     if(height){
       document.documentElement.style.setProperty('--toolbar-height',`${Math.ceil(height)+12}px`);
-      if(view)view.setProps({scrollMargin:{top:Math.ceil(height)+40,bottom:40},scrollThreshold:{top:Math.ceil(height)+40,bottom:40}});
+      if(view)view.setProps({scrollMargin:{top:40,bottom:Math.ceil(height)+40},scrollThreshold:{top:40,bottom:Math.ceil(height)+40}});
     }
   });
   observer.observe($('editor-toolbar'));
