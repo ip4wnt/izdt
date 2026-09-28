@@ -115,5 +115,104 @@
     "title": "Краткое описание рабочей пчелы.",
     "hidden": false,
     "manual": false
+  },
+  {
+    "id": "b-6f3ae200-daa3-46a3-83eb-065ae593321e",
+    "level": 3,
+    "number": "10",
+    "autoTitle": "Описание трутня.",
+    "title": "Описание трутня.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-8b480b08-3635-42fc-827a-442a38992728",
+    "level": 3,
+    "number": "11",
+    "autoTitle": "Первый выход молодых пчел.",
+    "title": "Первый выход молодых пчел.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-74eb1419-358b-47b3-8d1a-3de94fdb9eec",
+    "level": 3,
+    "number": "12",
+    "autoTitle": "Пчелы вне улья.",
+    "title": "Пчелы вне улья.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-803a404d-a540-4196-83f2-440b523014e5",
+    "level": 3,
+    "number": "13",
+    "autoTitle": "Пчелы на цветах.",
+    "title": "Пчелы на цветах.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-5dcdc41a-ec2e-4f52-bd71-5ff415dcc311",
+    "level": 3,
+    "number": "14",
+    "autoTitle": "Насекомые, похожие на пчел.",
+    "title": "Насекомые, похожие на пчел.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-5d15eaae-89ab-4a96-abda-07c7f65bb03d",
+    "level": 3,
+    "number": "15",
+    "autoTitle": "Посещение пчелами цветов; нектар.",
+    "title": "Посещение пчелами цветов; нектар.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-cda276ae-07c0-4238-b977-afc8659f3d7c",
+    "level": 3,
+    "number": "16",
+    "autoTitle": "Сбор нектара помимо цветов; медвяная роса.",
+    "title": "Сбор нектара помимо цветов; медвяная роса.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-a2719dbc-7c46-4801-b20c-89098e74a6fd",
+    "level": 1,
+    "number": "",
+    "autoTitle": "ДОПОЛНЕНИЕ.",
+    "title": "ДОПОЛНЕНИЕ.",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-fd3ee022-7b25-4b98-9e29-036b2a11a7b5",
+    "level": 2,
+    "number": "",
+    "autoTitle": "Дополнения относительно изготовления медовых напитков *).",
+    "title": "Дополнения относительно изготовления медовых напитков *).",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-e56f7d0f-b700-4ad4-a3b9-4122f8697bc1",
+    "level": 3,
+    "number": "17",
+    "autoTitle": "Вещества, могущие при шютовлении медовых напитков",
+    "title": "Вещества, могущие при шютовлении медовых напитков",
+    "hidden": false,
+    "manual": false
+  },
+  {
+    "id": "b-4e15019a-4d25-4740-8363-1a98fc430b6f",
+    "level": 3,
+    "number": "18",
+    "autoTitle": "Дополнителные указамия.",
+    "title": "Дополнителные указамия.",
+    "hidden": false,
+    "manual": false
   }
 ]
