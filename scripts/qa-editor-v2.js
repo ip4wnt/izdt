@@ -192,7 +192,11 @@ try{
   await clickText('livelihood');await page.keyboard.press('End');await page.keyboard.type(' Проверка офлайн.');
   await page.keyboard.press('Control+s');await page.waitForFunction(()=>document.querySelector('#save-status').classList.contains('error'));
   await page.keyboard.press('Escape');assert.equal(await page.locator('#book.ProseMirror').count(),1);
+  // Неудачное сохранение оставляет черновик в localStorage; успешное — убирает его.
+  const draft=()=>page.evaluate(()=>{try{return JSON.parse(localStorage.getItem('izdt:bees:draft'));}catch{return null;}});
+  assert.match((await draft())?.html||'',/Проверка офлайн\./,'draft is stored in localStorage after a failed save');
   await page.unroute(offline);await saved();
+  assert.equal(await draft(),null,'draft is cleared after a successful save');
   pass('failed save keeps draft and prevents leaving editor');
   const editedReaderResponse=page.waitForResponse(r=>r.url()===base+'/api/reader'&&r.request().method()==='GET');
   await page.keyboard.press('Escape');await editedReaderResponse;await page.waitForSelector('#book:not(.ProseMirror)');
@@ -422,6 +426,16 @@ try{
   await page.locator('#toggle-theme').click();await page.locator('#show-help').click();
   await page.locator('#help[open]').waitFor();await page.locator('.dialog-close').click();
   pass('dark mode and help');
+  // Черновик из прошлого сеанса: баннер при загрузке, «Открыть в редакторе» подставляет текст и сохраняет его.
+  await page.evaluate(()=>localStorage.setItem('izdt:bees:draft',JSON.stringify({html:document.getElementById('book').innerHTML.replace('Проверка офлайн.','Проверка офлайн. Восстановлено из черновика.'),revision:1,time:Date.now()})));
+  await page.reload();await page.waitForFunction(()=>document.querySelector('#book #products'));
+  await page.locator('#draft-banner:not([hidden])').waitFor();
+  await page.locator('#draft-open').click();await page.waitForSelector('#book.ProseMirror');
+  await page.waitForFunction(()=>document.querySelector('#save-status').textContent==='Сохранено');
+  assert.ok((await readFile(path.join(data,'content.html'),'utf8')).includes('Восстановлено из черновика.'));
+  assert.equal(await page.evaluate(()=>localStorage.getItem('izdt:bees:draft')),null);
+  await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+  pass('unsaved draft is offered on load and restored into the editor');
   // Медленная загрузка картинок: вход в редактор и выход из него не сдвигают текст, потому что <img> знает свои пропорции (width/height).
   const slowContext=await browser.newContext({viewport:{width:1366,height:768}});const slowPage=await slowContext.newPage();
   const cdp=await slowContext.newCDPSession(slowPage);await cdp.send('Network.setCacheDisabled',{cacheDisabled:true});

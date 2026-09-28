@@ -1,6 +1,6 @@
-import {readFile,writeFile,mkdir,rename,copyFile,readdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,rename,copyFile,readdir,unlink,stat} from 'node:fs/promises';
 import path from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {normalize,makeTOC,annotate} from './document.js';
 import {sanitizeStyles} from '../shared/model.js';
 import {pageHTML} from './template.js';
@@ -16,7 +16,45 @@ export async function atomic(file, value) {
   const destination=path.join(bookDir,file);
   await mkdir(path.dirname(destination),{recursive:true});
   const tmp=`${destination}.${randomUUID()}.tmp`;
-  await writeFile(tmp,value); await rename(tmp,destination);
+  await writeFile(tmp,value);
+  // В Windows файл бывает на секунду занят антивирусом или клиентом синхронизации: повторяем переименование, а не оставляем .tmp в папке.
+  for(let attempt=0;;attempt++){
+    try{await rename(tmp,destination);return;}
+    catch(e){
+      if(attempt>=5||!['EPERM','EBUSY','EACCES'].includes(e.code)){await unlink(tmp).catch(()=>{});throw e;}
+      await new Promise(r=>setTimeout(r,120*(attempt+1)));
+    }
+  }
+}
+// История книги. Снимок предыдущего состояния делается не чаще одного раза за HISTORY_INTERVAL минут,
+// хранится не более HISTORY_KEEP снимков; history/latest.html всегда равен последнему сохранению редактора.
+export const historyDir=path.join(bookDir,'history');
+export const historyPolicy={intervalMs:Number(process.env.HISTORY_INTERVAL_MIN||30)*60*1000,keep:Number(process.env.HISTORY_KEEP||50)};
+const hash=value=>createHash('sha256').update(value).digest('hex');
+const snapshotName=/^(\d+)-(\d+)(-[a-z]+)?\.html$/;
+export async function listSnapshots() {
+  let files=[];try{files=await readdir(historyDir);}catch(e){if(e.code!=='ENOENT')throw e;}
+  return files.map(name=>{const m=snapshotName.exec(name);return m&&{name,revision:Number(m[1]),time:Number(m[2]),kind:m[3]?m[3].slice(1):'auto'};}).filter(Boolean).sort((a,b)=>a.time-b.time);
+}
+export async function snapshot(html,revision,kind='') {
+  await mkdir(historyDir,{recursive:true});
+  const name=`${revision}-${Date.now()}${kind?`-${kind}`:''}.html`;
+  await writeFile(path.join(historyDir,name),html);
+  await pruneSnapshots();
+  return name;
+}
+export async function pruneSnapshots(keep=historyPolicy.keep) {
+  const snapshots=await listSnapshots();
+  const extra=snapshots.slice(0,Math.max(0,snapshots.length-keep));
+  for(const {name} of extra)await unlink(path.join(historyDir,name)).catch(()=>{});
+  return extra.length;
+}
+// Изменён ли content.html вне редактора: сравниваем с history/latest.html — копией последнего сохранения.
+export async function externalChange(html) {
+  let latest;try{latest=await readFile(path.join(historyDir,'latest.html'),'utf8');}catch(e){if(e.code==='ENOENT')return null;throw e;}
+  if(hash(latest)===hash(html))return null;
+  const {mtime}=await stat(path.join(bookDir,'content.html'));
+  return {latest,modifiedAt:mtime.toISOString()};
 }
 export const json = (file,data) => atomic(file,JSON.stringify(data,null,2)+'\n');
 let queue=Promise.resolve();
@@ -31,7 +69,8 @@ export async function getBook() {
   const {root}=normalize(html);
   // Старые картинки без width/height получают размеры из файлов при выдаче; в content.html они попадут при следующем сохранении.
   const sized=await fillImageSizes(root,bookDir);
-  return {html:sized?root.innerHTML:html,...meta,overrides,styles,toc:makeTOC(root,overrides),sharedData};
+  const external=await externalChange(html);
+  return {html:sized?root.innerHTML:html,...meta,overrides,styles,toc:makeTOC(root,overrides),sharedData,externalChange:external?external.modifiedAt:null,history:historyPolicy};
 }
 export async function getNotes(reader) {
   if(!sharedData)return readJSON(`readers/${reader}/notes.json`,[]);
@@ -65,15 +104,29 @@ export async function regenerate() {
 }
 export async function saveBook(html,revision) {
   const previous=await getBook();
-  if(revision!==previous.revision) throw Object.assign(new Error('Книга изменена в другой вкладке. Скопируйте свои правки и обновите страницу.'),{status:409});
+  const onDisk=await readFile(path.join(bookDir,'content.html'),'utf8');
+  if(revision!==previous.revision) {
+    // Текст редактора не пропадает: он ложится в history как rescue-снимок, о чём говорит сообщение.
+    const rescue=await snapshot(html,revision,'rescue');
+    throw Object.assign(new Error(`Книга изменена в другой вкладке или файл content.html заменён извне (синхронизация, git). Ваш текст сохранён в history/${rescue}. Обновите страницу.`),{status:409});
+  }
   const normalized=normalize(html);
   await fillImageSizes(normalized.root,bookDir);normalized.html=normalized.root.innerHTML;
   if(!normalized.root.textContent.trim()) throw Object.assign(new Error('Книга не может быть пустой.'),{status:400});
-  await mkdir(path.join(bookDir,'history'),{recursive:true});
-  await copyFile(path.join(bookDir,'content.html'),path.join(bookDir,'history',`${previous.revision}-${Date.now()}.html`));
+  const warnings=[];
+  const external=await externalChange(onDisk);
+  if(external){
+    // Файл на диске подменили вне редактора: его версия уходит в снимок, а побеждает текст редактора.
+    const name=await snapshot(onDisk,previous.revision,'external');
+    warnings.push(`Файл content.html был изменён вне редактора (${new Date(external.modifiedAt).toLocaleString('ru-RU')}). Эта версия сохранена в history/${name}; в книге остаётся текст редактора.`);
+  }
+  const snapshots=await listSnapshots();
+  const newest=snapshots.filter(s=>s.kind==='auto').at(-1);
+  if(!newest||Date.now()-newest.time>=historyPolicy.intervalMs)await snapshot(onDisk,previous.revision);
   await atomic('content.html',normalized.html);
+  await mkdir(historyDir,{recursive:true});await atomic('history/latest.html',normalized.html);
   await json('meta.json',{title:previous.title,revision:previous.revision+1});
-  return regenerate();
+  return {...await regenerate(),warnings};
 }
 export async function readerPage(reader) {
   const book=await getBook();
