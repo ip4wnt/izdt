@@ -36,12 +36,23 @@ document.addEventListener('keydown',e=>{
 try{
   const latest=await api('book');
   if(!state.editing){
-    Object.assign(state,{revision:latest.revision,toc:latest.toc,overrides:latest.overrides,styles:latest.styles||{}});editor.applyBookStyles();
+    Object.assign(state,{revision:latest.revision,toc:latest.toc,overrides:latest.overrides,styles:latest.styles||{},externalChange:latest.externalChange||null});editor.applyBookStyles();
     book.innerHTML=latest.html;applyAssetURLs(book);
     const reader=await api('reader');
     if(!state.editing){state.notes=reader.notes;book.innerHTML=reader.content;applyAssetURLs(book);panels.render();}
   }
 }catch(e){notify('Открыта статичная копия книги. '+e.message,12000);}
+// Черновик, который не удалось сохранить в прошлый раз, предлагается восстановить.
+{
+  const banner=document.getElementById('draft-banner'),draft=editor.readDraft();
+  if(draft&&draft.html!==book.innerHTML){
+    banner.querySelector('.draft-text').textContent=`Найден несохранённый черновик от ${new Date(draft.time).toLocaleString('ru-RU')}.`;
+    banner.hidden=false;
+    document.getElementById('draft-open').onclick=async()=>{banner.hidden=true;if(state.editing)await editor.toggle();if(!state.editing)await editor.toggle({html:draft.html});};
+    document.getElementById('draft-discard').onclick=()=>{editor.clearDraft();banner.hidden=true;};
+  }
+}
+if(state.externalChange)notify(`Файл книги был изменён вне редактора (${new Date(state.externalChange).toLocaleString('ru-RU')}). Последнее сохранение редактора лежит в data/books/bees/history/latest.html.`,20000);
 if(!persistent)notify(initial.sharedData
   ?'Браузер запретил localStorage. Общие заметки и закладка по-прежнему сохраняются в папке книги.'
   :'Браузер запретил localStorage: доступ к заметкам привязан к этой вкладке, закладка не переживёт её закрытие.',12000);

@@ -5,7 +5,7 @@ import {history, undo, redo, closeHistory} from 'prosemirror-history';
 import {keymap} from 'prosemirror-keymap';
 import {schema, parseDocument, serializeDocument, DEFAULTS, applyStyles, styleName, imageDOM} from './schema.js';
 import {STYLE_KEYS, stylesCSS} from '../shared/model.js';
-import {api, applyAssetURLs, notify, base} from '../public/js/api.js';
+import {api, applyAssetURLs, notify, base, storage} from '../public/js/api.js';
 import {makeTOC} from '../shared/model.js';
 import {typography, retypeAll} from './typography-plugin.js';
 
@@ -14,7 +14,12 @@ const uid=()=>`b-${crypto.randomUUID()}`;
 const imageTypes=new Set(['image','figure_image']);
 const controlIds=['text-style','font-family','font-size','line-height','text-indent','text-align'];
 export function createEditor(state,book,panels) {
-  let view=null, dirty=false, flight=null, timer=null, conflict=false, uploadCount=0;
+  let view=null, dirty=false, flight=null, timer=null, conflict=false, uploadCount=0, draftTimer=null;
+  // Черновик в localStorage: несохранённый текст переживает закрытие вкладки, сбой сервера и подмену файла.
+  const DRAFT_KEY='izdt:bees:draft';
+  const writeDraft=()=>{draftTimer=null;if(!dirty||!view)return;storage.set(DRAFT_KEY,JSON.stringify({html:currentHTML(),revision:state.revision,time:Date.now()}));};
+  const clearDraft=()=>{clearTimeout(draftTimer);draftTimer=null;storage.remove(DRAFT_KEY);};
+  const readDraft=()=>{try{const d=JSON.parse(storage.get(DRAFT_KEY));return d&&typeof d.html==='string'&&d.html.trim()?d:null;}catch{return null;}};
   const uploads=new Set();
   const status=(text,error=false)=>{$('save-status').textContent=text;$('save-status').classList.toggle('error',error);};
   const currentHTML=()=>view?serializeDocument(view.state.doc):book.innerHTML;
@@ -113,6 +118,7 @@ export function createEditor(state,book,panels) {
   function changed() {
     dirty=true;status('Не сохранено');updateTOC();
     clearTimeout(timer);if(!conflict)timer=setTimeout(save,900);
+    if(!draftTimer)draftTimer=setTimeout(writeDraft,1500);
   }
   async function save() {
     clearTimeout(timer);
@@ -127,8 +133,9 @@ export function createEditor(state,book,panels) {
           const result=await api('book',{method:'PUT',data:{html,revision:state.revision}});
           state.revision=result.revision;state.overrides=result.overrides;
           dirty=currentHTML()!==html;conflict=false;
-          if(!dirty){state.toc=result.toc;status('Сохранено');}
-        }catch(e){conflict=e.message.includes('другой вкладке');status('Не сохранено · повторите',true);notify(e.message,12000);return false;}
+          if(!dirty){state.toc=result.toc;status('Сохранено');clearDraft();}
+          for(const warning of result.warnings||[])notify(warning,20000);
+        }catch(e){conflict=e.message.includes('другой вкладке');writeDraft();status('Не сохранено · повторите',true);notify(e.message,20000);return false;}
       }
       return !dirty;
     })();
@@ -228,7 +235,8 @@ export function createEditor(state,book,panels) {
       stopEvent:e=>e.target===grip||e.target===handle,
       ignoreMutation:m=>m.type!=='selection'&&(!contentDOM.contains(m.target)||m.target===contentDOM&&m.type==='attributes')};
   }
-  async function toggle() {
+  // toggle({html}) открывает редактор с подставленным текстом (восстановление черновика).
+  async function toggle(options={}) {
     if(state.editing) {
       if(!(await save()))return;
       const html=currentHTML();view.destroy();view=null;
@@ -240,6 +248,7 @@ export function createEditor(state,book,panels) {
       return;
     }
     panels.close();for(const mark of book.querySelectorAll('mark'))mark.replaceWith(...mark.childNodes);
+    if(typeof options.html==='string'){book.innerHTML=options.html;applyAssetURLs(book);}
     const doc=parseDocument(book);
     state.editing=true;document.body.classList.add('editing');book.setAttribute('spellcheck','true');$('editor-toolbar').hidden=false;$('toggle-editor').classList.add('active');
     view=new EditorView({mount:book},{
@@ -278,6 +287,7 @@ export function createEditor(state,book,panels) {
     });
     status('Сохранено');dirty=false;conflict=false;
     view.focus();syncToolbar();
+    if(typeof options.html==='string'){changed();}
   }
   function finish(tr) {view.dispatch(closeHistory(tr));view.focus();syncToolbar();}
   function blockAttribute(name,value) {
@@ -502,5 +512,5 @@ export function createEditor(state,book,panels) {
   });
   observer.observe($('editor-toolbar'));
   window.addEventListener('beforeunload',e=>{if(dirty||uploadCount){e.preventDefault();e.returnValue='';}});
-  return {toggle,save,applyBookStyles:renderStyles,get dirty(){return dirty;}};
+  return {toggle,save,applyBookStyles:renderStyles,readDraft,clearDraft,get dirty(){return dirty;}};
 }

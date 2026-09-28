@@ -161,6 +161,8 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .editing{scroll-padding-bottom:var(--toolbar-height,16rem)}
 .selection-note{position:fixed;z-index:65;display:flex;align-items:center;gap:.6rem;background:#20201c;color:white;padding:.7rem 1rem;font:1rem Arial,sans-serif;box-shadow:0 .25rem 1rem #0002}
 .selection-note:hover{background:#36362e}.selection-note img{filter:invert(1);width:1.25rem;height:1.25rem}
+.draft-banner{position:fixed;top:1.5rem;left:50%;transform:translateX(-50%);z-index:95;display:flex;gap:1rem;align-items:center;max-width:70rem;background:var(--highlight);color:#111;padding:.9rem 1.5rem;font:1rem/1.4 Arial,sans-serif;box-shadow:0 .25rem 1rem #0003}
+.draft-banner button{border:1px solid #1116;padding:.3rem .8rem;background:#fff8;color:#111}.draft-banner button:hover{background:#fff}
 .notice{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);max-width:55rem;z-index:90;background:var(--ink);color:var(--paper);padding:1rem 1.5rem;font:1rem/1.5 Arial,sans-serif;box-shadow:0 .25rem 1rem #0002}
 dialog{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:3rem;max-width:46rem;font-size:1.4rem;line-height:1.35}
 dialog::backdrop{background:#0004;backdrop-filter:blur(3px)}dialog h2{font-weight:400;font-size:2rem;margin-top:0}dialog p{margin:1.3rem 0}
