@@ -129,7 +129,8 @@ const server=http.createServer(async(req,res)=>{
       editor(req);const data=await readData(req), crop=route.endsWith('/crop');
       const m=/^\/books\/bees\/img\/([a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif))$/.exec(data.src||'');
       if(!m)throw fail(400,'Неверная картинка.');
-      const args={};for(const k of crop?['x','y','width','height']:['x','y']){const v=data[k];if(!Number.isInteger(v)||v<0)throw fail(400,crop?'Неверная рамка обрезки.':'Неверная точка.');args[k]=v;}
+      if(!crop&&data.tolerance===undefined)data.tolerance=0;
+      const args={};for(const k of crop?['x','y','width','height']:['x','y','tolerance']){const v=data[k];if(!Number.isInteger(v)||v<0)throw fail(400,crop?'Неверная рамка обрезки.':'Неверная точка.');args[k]=v;}
       return send(await transaction(async()=>{
         const name=(await resolveReplaced(m[1]))||m[1], file=path.join(bookDir,'img',name);
         const output=await (crop?cropImage:transparentImage)(await readFile(file),args);

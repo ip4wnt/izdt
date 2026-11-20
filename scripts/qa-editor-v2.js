@@ -395,7 +395,7 @@ try{
     await page.locator(`#${id}`).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'image-crop-done.png')});
     pass('image crop: frame, Esc cancels, save makes exact-size PNG, page width scales, undo keeps new file, old file removed after save');
   }
-  // Прозрачный цвет: пипетка, Esc отменяет, щелчок дает новый PNG того же размера, цвет прозрачный, старый файл удаляется.
+  // Прозрачный цвет: пипетка, ползунок допуска перестраивает предпросмотр, «Сохранить» дает тот же результат с сервера.
   {
     const shell=page.locator('.image-shell').filter({has:page.locator('img[src$=".png"]')}).last();const id=await shell.getAttribute('id');
     await page.locator(`#${id}`).click();
@@ -404,23 +404,35 @@ try{
     assert.ok(await page.locator('#image-crop').isDisabled()&&await page.locator('#image-transparent').isDisabled());
     await page.keyboard.press('Escape');assert.equal(await page.locator('.pick-bar').count(),0);
     await page.locator(`#${id}`).click();await page.locator('#image-transparent').click();await page.waitForSelector(`#${id} .pick-bar`);
-    // Точка с непрозрачным цветом: в углах гравюры фон уже прозрачный.
+    assert.ok(await page.locator(`#${id} .pick-tools`).isHidden(),'slider appears only after a color is picked');
+    // Непрозрачная точка: фон этой гравюры уже прозрачный.
     const spot=await page.locator(`#${id} img`).evaluate(img=>{const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const x=c.getContext('2d');x.drawImage(img,0,0);const d=x.getImageData(0,0,c.width,c.height).data;
-      for(let y=Math.floor(c.height/2);y<c.height;y++)for(let i=0;i<c.width;i++){const o=(y*c.width+i)*4;if(d[o+3]===255)return {x:i,y,W:c.width,H:c.height,rgb:[d[o],d[o+1],d[o+2]]};}});
+      for(let y=Math.floor(c.height/2);y<c.height;y++)for(let i=0;i<c.width;i++){const o=(y*c.width+i)*4;if(d[o+3]===255)return {x:i,y,W:c.width,H:c.height};}});
+    assert.ok(spot,"opaque pixel");
     const at=async()=>{const r=await page.locator(`#${id} img`).boundingBox();return [r.x+(spot.x+.5)/spot.W*r.width,r.y+(spot.y+.5)/spot.H*r.height];};
-    await page.mouse.move(...await at());
-    await page.locator(`#${id}`).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'image-transparent-pick.png')});
     await page.mouse.click(...await at());
+    await page.waitForSelector(`#${id}.pick-previewing .pick-range`);
+    const count=async()=>{await page.waitForTimeout(150);return Number((await page.locator(`#${id} .crop-save`).getAttribute('title')).match(/станут ([\d\s\u00a0]+) px/)?.[1].replace(/\D/g,'')||0);};
+    const setTol=async v=>{await page.locator(`#${id} .pick-range`).evaluate((el,v)=>{el.value=String(v);el.dispatchEvent(new Event('input',{bubbles:true}));},v);return count();};
+    const c0=await setTol(0),c40=await setTol(40),c5=await setTol(5);
+    assert.ok(c0>0&&c40>c5&&c5>=c0,JSON.stringify({c0,c5,c40}));
+    assert.equal(await page.locator(`#${id} img`).getAttribute('src'),before.src,'slider does not touch the file');
+    const c25=await setTol(25);
+    await page.locator(`#${id}`).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'image-transparent-pick.png')});
+    const previewAlpha=await page.locator(`#${id} .pick-preview`).evaluate(c=>{const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i]===0)n++;return n;});
+    await page.locator(`#${id} .crop-save`).click();
     await page.waitForFunction(([i,src])=>{const img=document.getElementById(i)?.querySelector('img');return img&&!img.src.endsWith(src)&&img.complete&&img.naturalWidth>0&&!document.querySelector('.pick-bar');},[id,before.src]);
-    const after=await page.locator(`#${id}`).evaluate(el=>{const img=el.querySelector('img'),c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const x=c.getContext('2d');x.drawImage(img,0,0);
-      const p=x.getImageData(0,0,c.width,c.height).data;let same=0;for(let i=0;i<p.length;i+=4)if(p[i+3]===0)same++;return {src:img.getAttribute('src'),w:img.naturalWidth,h:img.naturalHeight,width:el.style.width,clear:same};});
+    const after=await page.locator(`#${id}`).evaluate(async el=>{const img=el.querySelector('img'),bmp=await createImageBitmap(await (await fetch(img.src)).blob(),{colorSpaceConversion:'none',premultiplyAlpha:'none'}),c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;const x=c.getContext('2d');x.drawImage(bmp,0,0);
+      const p=x.getImageData(0,0,c.width,c.height).data;let clear=0;for(let i=3;i<p.length;i+=4)if(p[i]===0)clear++;return {src:img.getAttribute('src'),w:img.naturalWidth,h:img.naturalHeight,width:el.style.width,clear};});
     assert.deepEqual([after.w,after.h,after.width],[before.w,before.h,before.width]);assert.match(after.src,/\.png$/);
+    assert.equal(after.clear,previewAlpha,'server result matches the preview');
     await saved();
     const files=await readdir(path.join(data,'img'));
     assert.ok(files.includes(path.basename(after.src))&&!files.includes(path.basename(before.src)),files.join(','));
     await page.locator(`#${id}`).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'image-transparent-done.png')});
-    pass(`image transparent: eyedropper, Esc cancels, click makes same-size PNG, width kept, old file removed after save (${after.clear} transparent px)`);
+    pass(`image transparent: pick, tolerance slider rebuilds preview (0:${c0}, 5:${c5}, 25:${c25}, 40:${c40} px), save matches preview, width kept, old file removed`);
   }
+
   await clickText('garden');await page.keyboard.press('Control+End');await page.keyboard.press('Enter');await page.keyboard.type('Новая строка');
   await page.selectOption('#text-style','h3');
   assert.ok(await page.locator('#book h3').filter({hasText:'Новая строка'}).count());

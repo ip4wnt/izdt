@@ -45,6 +45,13 @@ test('transparent: only the picked color becomes transparent, other pixels and c
   assert.equal(idat(o),idat(rgb));assert.equal(readChunks(o).find(c=>c.type==='tRNS').data.toString('hex'),'000900080007');
   assert.throws(()=>transparentPNG(o,{x:0,y:0}),/уже прозрачный/);
   assert.throws(()=>transparentPNG(rgb,{x:4,y:0}),/вне картинки/);
+  // Допуск: близкие оттенки тоже прозрачные; несколько цветов — добавляется альфа-канал, цвета те же.
+  const near=transparentPNG(rgb,{x:1,y:0,tolerance:3}),h=pngInfo(near);
+  assert.equal(h.color,6);
+  const rows=zlib.inflateSync(Buffer.concat(readChunks(near).filter(c=>c.type==='IDAT').map(c=>c.data)));
+  const rgba=[];let prev=Buffer.alloc(16);for(let y=0;y<2;y++){const t=rows[y*17],r=Buffer.from(rows.subarray(y*17+1,y*17+17));for(let k=0;k<16;k++){const a=k>=4?r[k-4]:0,b=prev[k],c=k>=4?prev[k-4]:0,p=a+b-c,pa=Math.abs(p-a),pb=Math.abs(p-b),pc=Math.abs(p-c);r[k]=(r[k]+(t===1?a:t===2?b:t===3?(a+b)>>1:t===4?(pa<=pb&&pa<=pc?a:pb<=pc?b:c):0))&255;}rgba.push(r);prev=r;}
+  assert.deepEqual(rgba.map(r=>[...r]),[[9,8,7,255,1,2,3,0,9,8,7,255,4,5,6,0],[9,8,7,255,9,8,7,255,0,0,0,0,1,1,1,0]]);
+  assert.throws(()=>transparentPNG(rgb,{x:0,y:0,tolerance:300}),/допуск/);
   assert.ok(Buffer.isBuffer(await transparentImage(src,{x:0,y:0})));
 });
 
@@ -77,7 +84,8 @@ test('crop API: new PNG, old file removed after save, old URL redirects',async()
     assert.deepEqual((await readdir(path.join(dir,'img'))).sort(),[path.basename(cropped.data.url)]);
     // Прозрачный цвет: тот же размер, новый файл, старый удаляется при сохранении.
     assert.equal((await request('/api/images/transparent','POST',{src:cropped.data.url,x:30,y:0})).status,400);
-    const clear=await request('/api/images/transparent','POST',{src:cropped.data.url,x:1,y:1});
+    assert.equal((await request('/api/images/transparent','POST',{src:cropped.data.url,x:1,y:1,tolerance:-1})).status,400);
+    const clear=await request('/api/images/transparent','POST',{src:cropped.data.url,x:1,y:1,tolerance:4});
     assert.equal(clear.status,201,JSON.stringify(clear.data));assert.deepEqual([clear.data.w,clear.data.h],[30,20]);
     assert.equal((await request('/api/images/transparent','POST',{src:clear.data.url,x:1,y:1})).status,409);
     const again=await request('/api/book','PUT',{html:html(cropped.data.url),revision:saved.data.revision});

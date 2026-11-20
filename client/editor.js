@@ -351,37 +351,80 @@ export function createEditor(state,book,panels) {
       cropping={stop:stopCrop,kind:'crop'};syncToolbar();
     };
     dom.izdtStartCrop=startCrop;
-    // Пипетка: щелчок по картинке делает этот цвет прозрачным во всем изображении (точное совпадение).
+    // Пипетка: щелчок выбирает цвет, ползунок «Допуск» задает, насколько близкие оттенки тоже станут прозрачными.
+    // Предпросмотр каждый раз считается заново из исходной картинки; файл перезаписывается только по «Сохранить».
     let pick=null;
-    const stopPick=()=>{if(!pick)return;pick.ui.remove();img.removeEventListener('pointermove',pick.hover);img.removeEventListener('click',pick.click,true);pick=null;dom.classList.remove('picking');dom.draggable=true;cropping=null;syncToolbar();};
-    const startPick=()=>{
+    const stopPick=()=>{
+      if(!pick)return;cancelAnimationFrame(pick.frame);pick.ui.remove();pick.preview.remove();
+      for(const el of [img,pick.preview]){el.removeEventListener('pointermove',pick.hover);el.removeEventListener('click',pick.click,true);}
+      pick=null;dom.classList.remove('picking','pick-previewing');dom.draggable=true;cropping=null;syncToolbar();
+    };
+    // Пиксели без перевода цветового профиля — те же значения, что видит сервер.
+    const sourcePixels=async(W,H)=>{
+      const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d',{willReadFrequently:true});
+      try{const blob=await (await fetch(img.currentSrc||img.src,{cache:'force-cache'})).blob();const bmp=await createImageBitmap(blob,{colorSpaceConversion:'none',premultiplyAlpha:'none'});
+        if(bmp.width!==W||bmp.height!==H)throw new Error('size');x.drawImage(bmp,0,0);bmp.close?.();}
+      catch{x.clearRect(0,0,W,H);x.drawImage(img,0,0);}
+      return x.getImageData(0,0,W,H);
+    };
+    const startPick=async()=>{
       if(pick||crop)return;
       if(!(img.naturalWidth>0)){notify('Картинка еще не загрузилась.');return;}
-      const W=img.naturalWidth,H=img.naturalHeight,point=e=>{const r=img.getBoundingClientRect();return {x:Math.min(W-1,Math.max(0,Math.floor((e.clientX-r.left)/r.width*W))),y:Math.min(H-1,Math.max(0,Math.floor((e.clientY-r.top)/r.height*H)))};};
-      let ctx=null;try{const c=document.createElement('canvas');c.width=W;c.height=H;ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);ctx.getImageData(0,0,1,1);}catch{ctx=null;}
+      const W=img.naturalWidth,H=img.naturalHeight;
+      pick={busy:true};cropping={stop:()=>{},kind:'pick'};syncToolbar();
+      let source;try{source=await sourcePixels(W,H);}catch{pick=null;cropping=null;syncToolbar();notify('Не удалось прочитать картинку.');return;}
+      if(!pick)return;
+      const src=source.data,point=e=>{const r=img.getBoundingClientRect();return {x:Math.min(W-1,Math.max(0,Math.floor((e.clientX-r.left)/r.width*W))),y:Math.min(H-1,Math.max(0,Math.floor((e.clientY-r.top)/r.height*H)))};};
+      const preview=document.createElement('canvas');preview.className='pick-preview';preview.width=W;preview.height=H;
+      const pctx=preview.getContext('2d'),out=new ImageData(W,H);
       const ui=document.createElement('span');ui.className='pick-bar';ui.contentEditable='false';
       const swatch=document.createElement('span');swatch.className='pick-swatch';
       const hint=document.createElement('span');hint.className='pick-hint';hint.textContent='Щелкните по цвету, который станет прозрачным';
+      const tools=document.createElement('span');tools.className='pick-tools';tools.hidden=true;
+      const label=document.createElement('label');label.textContent='Допуск';
+      const range=document.createElement('input');range.type='range';range.min='0';range.max='100';range.step='1';range.value='10';range.className='pick-range';
+      const value=document.createElement('output');value.className='pick-value';value.textContent=range.value;
+      label.append(range,value);
+      const saveButton=document.createElement('button');saveButton.type='button';saveButton.textContent='Сохранить';saveButton.className='crop-save';
+      tools.append(label,saveButton);
       const cancelButton=document.createElement('button');cancelButton.type='button';cancelButton.textContent='Отмена';cancelButton.className='crop-cancel';
-      ui.append(swatch,hint,cancelButton);dom.append(ui);
-      const hover=e=>{if(!ctx)return;const {x,y}=point(e),[r,g,b,a]=ctx.getImageData(x,y,1,1).data;swatch.style.background=a?`rgb(${r} ${g} ${b})`:'transparent';swatch.classList.toggle('clear',!a);};
-      const click=async e=>{
-        e.preventDefault();e.stopPropagation();if(pick.busy)return;
-        pick.busy=true;hint.textContent='Сохранение…';cancelButton.disabled=true;
-        try{await replaceImageAt(getPos(),'images/transparent',point(e),'Прозрачный цвет…');stopPick();}
-        catch(err){notify(err.message,12000);pick.busy=false;hint.textContent='Щелкните по цвету, который станет прозрачным';cancelButton.disabled=false;}
+      ui.append(swatch,hint,tools,cancelButton);dom.append(preview,ui);
+      const color=i=>src[i+3]?`rgb(${src[i]} ${src[i+1]} ${src[i+2]})`:'transparent';
+      const paint=(el,i)=>{el.style.background=color(i);el.classList.toggle('clear',!src[i+3]);};
+      const render=()=>{
+        pick.frame=0;if(!pick.target)return;
+        const tol=Number(range.value),[r,g,b]=pick.target,d=out.data;d.set(src);let n=0;
+        for(let i=0;i<d.length;i+=4)if(d[i+3]!==0&&Math.abs(d[i]-r)<=tol&&Math.abs(d[i+1]-g)<=tol&&Math.abs(d[i+2]-b)<=tol){d[i+3]=0;n++;}
+        pctx.putImageData(out,0,0);pick.count=n;value.textContent=range.value;
+        saveButton.disabled=pick.busy||!n;saveButton.title=n?`Прозрачными станут ${n.toLocaleString('ru-RU')} px из ${(W*H).toLocaleString('ru-RU')}`:'Ничего не меняется';
       };
+      const schedule=()=>{if(pick&&!pick.frame)pick.frame=requestAnimationFrame(render);};
+      const hover=e=>{if(!pick.target){const {x,y}=point(e);paint(swatch,(y*W+x)*4);}};
+      const click=e=>{
+        e.preventDefault();e.stopPropagation();if(pick.busy)return;
+        const at=point(e),i=(at.y*W+at.x)*4;
+        if(!src[i+3]){hint.textContent='Этот пиксель уже прозрачный, выберите другой';return;}
+        pick.at=at;pick.target=[src[i],src[i+1],src[i+2]];paint(swatch,i);
+        hint.textContent='Щелчок по картинке — другой цвет';tools.hidden=false;dom.classList.add('pick-previewing');schedule();
+      };
+      range.addEventListener('input',()=>{value.textContent=range.value;schedule();});
       cancelButton.onclick=e=>{e.preventDefault();stopPick();editor.focus();};
-      img.addEventListener('pointermove',hover);img.addEventListener('click',click,true);
-      pick={ui,hover,click,busy:false};dom.classList.add('picking');dom.draggable=false;
+      saveButton.onclick=async e=>{
+        e.preventDefault();if(pick.busy||!pick.target)return;
+        pick.busy=true;saveButton.disabled=cancelButton.disabled=range.disabled=true;saveButton.textContent='Сохранение…';
+        try{await replaceImageAt(getPos(),'images/transparent',{...pick.at,tolerance:Number(range.value)},'Прозрачный цвет…');stopPick();}
+        catch(err){notify(err.message,12000);pick.busy=false;cancelButton.disabled=range.disabled=false;saveButton.textContent='Сохранить';render();}
+      };
+      for(const el of [img,preview]){el.addEventListener('pointermove',hover);el.addEventListener('click',click,true);}
+      Object.assign(pick,{ui,preview,hover,click,busy:false,frame:0,target:null,count:0});dom.classList.add('picking');dom.draggable=false;
       cropping={stop:stopPick,kind:'pick'};syncToolbar();
     };
     dom.izdtStartPick=startPick;
     return {dom,update(n){if(n.type!==current.type)return false;if(crop&&n.attrs.src!==current.attrs.src)stopCrop();if(pick&&!pick.busy&&n.attrs.src!==current.attrs.src)stopPick();current=n;render();return true;},
       selectNode(){dom.classList.add('ProseMirror-selectednode');},
       deselectNode(){dom.classList.remove('ProseMirror-selectednode');stopCrop();if(pick&&!pick.busy)stopPick();},
-      destroy(){if(crop||pick)cropping=null;},
-      stopEvent:e=>e.target===handle||!!e.target.closest?.('.crop-ui,.pick-bar')||(!!pick&&e.target===img),ignoreMutation:()=>true};
+      destroy(){if(crop||pick)cropping=null;if(pick)cancelAnimationFrame(pick.frame);},
+      stopEvent:e=>e.target===handle||!!e.target.closest?.('.crop-ui,.pick-bar,.pick-preview')||(!!pick&&e.target===img),ignoreMutation:()=>true};
   }
   // Плашка с текстом на картинке: перетаскивается за ручку, ширина меняется маркером справа.
   function overlayView(node,editor,getPos) {
