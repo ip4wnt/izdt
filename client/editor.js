@@ -1,5 +1,6 @@
 import {EditorState, Plugin, TextSelection, NodeSelection} from 'prosemirror-state';
 import {EditorView} from 'prosemirror-view';
+import {DOMSerializer} from 'prosemirror-model';
 import {baseKeymap, toggleMark} from 'prosemirror-commands';
 import {history, undo, redo, closeHistory} from 'prosemirror-history';
 import {keymap} from 'prosemirror-keymap';
@@ -34,6 +35,21 @@ function convertOverlay(o,toSquare,width,align) {
  * Порядок в картинках-блоках после любой правки (кнопки, удаление текста, отмена):
  * блок без плашки и подписи разворачивается в обычную картинку, ширина и положение блока повторяют картинку.
  */
+// Абзац и заголовок: подпись неразрывных пробелов (data-typo) меняется при каждой правке текста.
+// По умолчанию ProseMirror из-за смены атрибута пересоздает элемент целиком, и браузер теряет проверку
+// орфографии в этом абзаце. Здесь подпись обновляется на месте, элемент и его текст остаются прежними.
+function textblockView(node) {
+  let current=node;
+  const {dom,contentDOM}=DOMSerializer.renderSpec(document,node.type.spec.toDOM(node));
+  const rest=n=>{const {typo,...a}=n.attrs;return JSON.stringify(a);};
+  return {dom,contentDOM,
+    update(next){
+      if(next.type!==current.type||rest(next)!==rest(current))return false;
+      if(next.attrs.typo!==current.attrs.typo){if(next.attrs.typo)dom.setAttribute('data-typo',next.attrs.typo);else dom.removeAttribute('data-typo');}
+      current=next;return true;
+    },
+    ignoreMutation:m=>m.type==='attributes'&&m.target===dom&&m.attributeName==='data-typo'};
+}
 const figures=new Plugin({
   appendTransaction(transactions,old,state) {
     if(!transactions.some(tr=>tr.docChanged))return null;
@@ -482,7 +498,7 @@ export function createEditor(state,book,panels) {
         keymap(baseKeymap)
       ]}),
       dispatchTransaction:dispatch,
-      nodeViews:{image:imageView,figure_image:imageView,overlay:overlayView},
+      nodeViews:{image:imageView,figure_image:imageView,overlay:overlayView,paragraph:textblockView,heading:textblockView},
       // The mounted article owns .book, spellcheck and its accessible label.
       // ProseMirror removes every attribute/class declared here on destroy().
       // Only give it editor-specific attributes; otherwise exiting strips reader styling.

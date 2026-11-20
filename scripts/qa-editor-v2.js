@@ -395,6 +395,19 @@ try{
     await page.locator(`#${id}`).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'image-crop-done.png')});
     pass('image crop: frame, Esc cancels, save makes exact-size PNG, page width scales, undo keeps new file, old file removed after save');
   }
+  // Правка текста не пересоздает абзац: иначе браузер теряет подчеркивание ошибок (проверку орфографии) в нем.
+  {
+    const original=await page.locator('#garden').evaluate(p=>p.textContent);
+    await clickText('garden');await page.keyboard.press('End');await page.keyboard.type('ы');
+    await page.evaluate(()=>{const p=document.getElementById('garden');window.__spell={p,text:p.firstChild};});
+    await page.keyboard.type(' слвоо');for(let i=0;i<7;i++)await page.keyboard.press('Backspace');
+    await page.keyboard.press('Home');await page.keyboard.type('ыы');for(let i=0;i<2;i++)await page.keyboard.press('Backspace');
+    await page.waitForTimeout(200);
+    assert.ok(await page.evaluate(()=>window.__spell.p===document.getElementById('garden')&&window.__spell.text===document.getElementById('garden').firstChild&&document.getElementById('garden').spellcheck),'paragraph element and its text node are kept while typing');
+    assert.equal(await page.locator('#garden').evaluate(p=>p.textContent),original);
+    await saved();
+    pass('typing keeps the paragraph element (browser spellcheck marks survive edits)');
+  }
   // Прозрачный цвет: пипетка, ползунок допуска перестраивает предпросмотр, «Сохранить» дает тот же результат с сервера.
   {
     const shell=page.locator('.image-shell').filter({has:page.locator('img[src$=".png"]')}).last();const id=await shell.getAttribute('id');
