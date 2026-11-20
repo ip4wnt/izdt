@@ -1,5 +1,5 @@
 import {chromium} from 'playwright';
-import {mkdtemp,cp,mkdir,rm,writeFile,readFile} from 'node:fs/promises';
+import {mkdtemp,cp,mkdir,rm,writeFile,readFile,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
@@ -331,10 +331,12 @@ try{
     assert.equal(await page.locator('figure.image-figure.wrap-right figcaption').count(),1);
     // Сохранение и читалка.
     await saved();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
-    const reader=page.locator('#book figure.image-figure.wrap-right');
-    assert.equal((await reader.locator('figcaption p.caption').textContent()).replace(/\u00a0/g,' '),'Рис. 28. Пчелы, собирающие воду на бережках лужиц.');
-    assert.equal(await reader.evaluate(el=>getComputedStyle(el).float),'right');
-    await reader.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'figure-caption-reader.png')});
+    // Читалка после выхода из редактора может перерисовать книгу (заметки, закладка): проверяем уже устоявшийся DOM.
+    await page.waitForFunction(()=>{const el=document.querySelector('#book figure.image-figure.wrap-right');
+      if(!el||getComputedStyle(el).float!=='right')return false;
+      if(el.querySelector('figcaption p.caption')?.textContent.replace(/\u00a0/g,' ')!=='Рис. 28. Пчелы, собирающие воду на бережках лужиц.')return false;
+      el.scrollIntoView({block:'center'});return true;});
+    await page.waitForTimeout(300);await page.screenshot({path:path.join(output,'figure-caption-reader.png')});
     await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
     // Backspace в пустой подписи убирает ее, картинка остается с тем же обтеканием.
     const edit=page.locator('#book figure.image-figure.wrap-right');
@@ -356,6 +358,42 @@ try{
     assert.equal(await page.locator('figure.image-figure.wrap-right .image-overlay').count(),0);
     await saved();
     pass('figure caption: wrap with caption, width, block alignment, reader, remove caption by button and Backspace, caption plus overlay');
+  }
+  // Обрезка: рамка, Esc отменяет, «Сохранить» дает новый PNG нужного размера, ширина на странице уменьшается, старый файл удаляется.
+  {
+    await clickText('garden');await page.keyboard.press('End');
+    await page.locator('#image-input').setInputFiles('data/books/bees/img/frontispiece.png');
+    await page.waitForSelector('.image-shell.ProseMirror-selectednode img');
+    await number('image-width',60);
+    const shell=page.locator('.image-shell.ProseMirror-selectednode');const id=await shell.getAttribute('id');
+    await page.waitForFunction(i=>document.getElementById(i).querySelector('img').naturalWidth>0,id);
+    const oldSrc=await page.locator(`#${id} img`).getAttribute('src');
+    await page.locator('#image-crop').click();
+    await page.waitForSelector(`#${id} .crop-frame`);
+    assert.ok(await page.locator('#image-crop').isDisabled());
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.crop-frame').count(),0);assert.ok(await page.locator('#book.ProseMirror').count(),'Esc cancels crop, editor stays open');
+    await page.locator(`#${id}`).click();await page.locator('#image-crop').click();await page.waitForSelector(`#${id} .crop-frame`);
+    const drag=async(edge,fx,fy)=>{const r=await page.locator(`#${id} img`).boundingBox(),h=await page.locator(`#${id} .crop-${edge}`).boundingBox();
+      const x=h.x+h.width/2,y=h.y+h.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+fx*r.width,y+fy*r.height,{steps:6});await page.mouse.up();};
+    await drag('nw',.1,.2);await drag('se',-.25,-.1);await drag('e',.05,0);
+    await page.locator(`#${id} .crop-frame`).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'image-crop-frame.png')});
+    const expected=await page.locator(`#${id} .crop-frame`).evaluate(f=>{const img=f.closest('.image-shell').querySelector('img'),W=img.naturalWidth,H=img.naturalHeight,l=parseFloat(f.style.left)/100,t=parseFloat(f.style.top)/100,w=parseFloat(f.style.width)/100,h=parseFloat(f.style.height)/100;
+      const x=Math.round(l*W),y=Math.round(t*H);return {W,H,width:Math.round((l+w)*W)-x,height:Math.round((t+h)*H)-y};});
+    await page.locator(`#${id} .crop-save`).click();
+    await page.waitForFunction(([i,src])=>{const img=document.getElementById(i)?.querySelector('img');return img&&!img.src.endsWith(src)&&img.complete&&img.naturalWidth>0&&!document.querySelector('.crop-frame');},[id,oldSrc]);
+    const after=await page.locator(`#${id}`).evaluate(el=>({w:el.querySelector('img').naturalWidth,h:el.querySelector('img').naturalHeight,src:el.querySelector('img').getAttribute('src'),width:el.style.width}));
+    assert.deepEqual([after.w,after.h],[expected.width,expected.height],JSON.stringify({after,expected}));
+    assert.match(after.src,/\.png$/);assert.equal(after.width,`${Math.round(60*expected.width/expected.W)}%`);
+    await page.keyboard.press('Control+z');
+    assert.equal(await page.locator(`#${id} img`).getAttribute('src'),after.src,'undo does not bring back the removed file');
+    assert.equal(await page.locator(`#${id}`).evaluate(el=>el.style.width),after.width,'undo keeps the cropped width');
+    await saved();
+    const files=await readdir(path.join(data,'img'));
+    assert.ok(files.includes(path.basename(after.src))&&!files.includes(path.basename(oldSrc)),files.join(','));
+    assert.equal((await fetch(base+oldSrc,{redirect:'manual'})).status,301);
+    await page.locator(`#${id}`).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'image-crop-done.png')});
+    pass('image crop: frame, Esc cancels, save makes exact-size PNG, page width scales, undo keeps new file, old file removed after save');
   }
   await clickText('garden');await page.keyboard.press('Control+End');await page.keyboard.press('Enter');await page.keyboard.type('Новая строка');
   await page.selectOption('#text-style','h3');

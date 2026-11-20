@@ -3,7 +3,9 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {bookDir,getBook,getNotes,deleteNote,json,transaction,regenerate,saveBook,readerPage,sharedData,notesFile,getBookmark} from './store.js';
+import {cropImage} from './image-crop.js';
+import {parseImageSize} from './image-size.js';
+import {bookDir,markReplaced,resolveReplaced,getBook,getNotes,deleteNote,json,transaction,regenerate,saveBook,readerPage,sharedData,notesFile,getBookmark} from './store.js';
 import {parseFragment,resolveNote} from './document.js';
 import {MAX_HTML,MAX_IMAGE,ID_PATTERN,READER_PATTERN,STYLE_KEYS,sanitizeStyles} from '../shared/model.js';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -122,11 +124,31 @@ const server=http.createServer(async(req,res)=>{
       const name=`${randomUUID()}.${ext}`;await mkdir(path.join(bookDir,'img'),{recursive:true});await writeFile(path.join(bookDir,'img',name),buffer);
       return send({url:`/books/bees/img/${name}`},201);
     }
+    if(route==='/api/images/crop'&&req.method==='POST'){
+      editor(req);const data=await readData(req);
+      const m=/^\/books\/bees\/img\/([a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif))$/.exec(data.src||'');
+      if(!m)throw fail(400,'Неверная картинка.');
+      const rect={};for(const k of ['x','y','width','height']){const v=data[k];if(!Number.isInteger(v)||v<0)throw fail(400,'Неверная рамка обрезки.');rect[k]=v;}
+      return send(await transaction(async()=>{
+        const name=(await resolveReplaced(m[1]))||m[1], file=path.join(bookDir,'img',name);
+        const output=await cropImage(await readFile(file),rect);
+        const next=`${randomUUID()}.png`;await writeFile(path.join(bookDir,'img',next),output);
+        // Та же картинка стоит в книге еще где-то: старый файл остается, меняется только эта.
+        if(data.keep!==true)await markReplaced(name,next);
+        const size=parseImageSize(output);
+        return {url:`/books/bees/img/${next}`,w:size.width,h:size.height,replaced:`/books/bees/img/${m[1]}`};
+      }),201);
+    }
     if(route.startsWith('/api/'))throw fail(404,'Маршрут не найден.');
     if(!['GET','HEAD'].includes(req.method))throw fail(405,'Метод не поддерживается.');
     let file;
     if(route==='/'||route==='/index.html')file=path.join(bookDir,'generated/index.html');
-    else if(/^\/books\/bees\/img\/[a-zA-Z0-9_.-]+\.(png|jpg|jpeg|webp|gif)$/.test(route))file=path.join(bookDir,'img',path.basename(route));
+    else if(/^\/books\/bees\/img\/[a-zA-Z0-9_.-]+\.(png|jpg|jpeg|webp|gif)$/.test(route)){
+      file=path.join(bookDir,'img',path.basename(route));
+      // Картинку обрезали: старый адрес ведет на новый файл.
+      const next=await resolveReplaced(path.basename(route));
+      if(next){res.writeHead(301,{Location:next,'Cache-Control':'no-cache'});res.end();return;}
+    }
     else {
       const base=route.startsWith('/shared/')?path.join(root,'shared'):path.join(root,'public');
       const relative=route.startsWith('/shared/')?route.slice(8):route.slice(1);

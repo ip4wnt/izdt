@@ -56,6 +56,7 @@ export function pageHTML(book, base='') {
 <div class="ribbon-group">
 <button id="figure-text" title="Положить текст поверх картинки: плашку можно перетаскивать и менять по ширине" hidden>Текст на картинке</button>
 <button id="figure-caption" title="Подпись под картинкой: при обтекании переносится вместе с картинкой" aria-pressed="false" hidden>Подпись</button>
+<button id="image-crop" title="Обрезать картинку: потяните края рамки и нажмите «Сохранить»" aria-pressed="false" disabled>Обрезать</button>
 <button id="delete-image" title="Удалить выбранное изображение" aria-label="Удалить изображение" disabled>${icon('x')}</button></div>
 </div>
 </div>

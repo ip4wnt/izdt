@@ -54,6 +54,39 @@ const figures=new Plugin({
 });
 export function createEditor(state,book,panels) {
   let view=null, dirty=false, flight=null, timer=null, conflict=false, uploadCount=0, draftTimer=null;
+  // Обрезанные картинки: старый адрес → новый файл. Отмена (Ctrl+Z) не возвращает удаленный файл.
+  const replacedImages=new Map();let cropping=null;
+  const replaced=new Plugin({
+    appendTransaction(transactions,old,state){
+      if(!replacedImages.size||!transactions.some(tr=>tr.docChanged))return null;
+      const tr=state.tr;
+      state.doc.descendants((node,pos)=>{
+        const next=imageTypes.has(node.type.name)&&replacedImages.get(node.attrs.src);
+        if(next)tr.setNodeMarkup(pos,undefined,{...node.attrs,...next});
+      });
+      return tr.docChanged?tr.setMeta('addToHistory',false):null;
+    }
+  });
+  async function cropImageAt(pos,rect,naturalWidth){
+    if(typeof pos!=='number')throw new Error('Картинка не найдена.');
+    const node=view.state.doc.nodeAt(pos);if(!node||!imageTypes.has(node.type.name))throw new Error('Картинка не найдена.');
+    let uses=0;view.state.doc.descendants(n=>{if(imageTypes.has(n.type.name)&&n.attrs.src===node.attrs.src)uses++;});
+    uploadCount++;status('Обрезка изображения…');
+    let result;
+    try{result=await api('images/crop',{method:'POST',data:{src:node.attrs.src,...rect,keep:uses>1}});}
+    finally{uploadCount--;}
+    // Ширина на странице уменьшается вместе с картинкой: рисунок остается того же масштаба, только без полей.
+    const current=view.state.doc.nodeAt(pos)?.attrs.src===node.attrs.src?pos:null;
+    let at=current;if(at===null)view.state.doc.descendants((n,p)=>{if(at===null&&n.attrs?.id&&n.attrs.id===node.attrs.id)at=p;});
+    if(at===null)throw new Error('Картинка не найдена.');
+    const fresh=view.state.doc.nodeAt(at),before=fresh.attrs.width||(fresh.type.name==='figure_image'?100:45);
+    const width=Math.max(5,Math.min(100,Math.round(before*rect.width/naturalWidth)));
+    // Отмена ранних шагов (Ctrl+Z) не возвращает ни старый файл, ни прежнюю ширину обрезанной картинки.
+    if(uses<=1){replacedImages.set(node.attrs.src,{src:result.url,w:result.w,h:result.h,width});for(const [k,v] of replacedImages)if(v.src===node.attrs.src)replacedImages.set(k,{src:result.url,w:result.w,h:result.h,width});}
+    const tr=view.state.tr.setNodeMarkup(at,undefined,{...fresh.attrs,src:result.url,w:result.w,h:result.h,width}).setMeta('addToHistory',false);
+    view.dispatch(tr.setSelection(NodeSelection.create(tr.doc,at)));view.focus();syncToolbar();
+    clearTimeout(timer);timer=setTimeout(save,200);
+  }
   // Черновик в localStorage: несохранённый текст переживает закрытие вкладки, сбой сервера и подмену файла.
   const DRAFT_KEY='izdt:bees:draft';
   const writeDraft=()=>{draftTimer=null;if(!dirty||!view)return;storage.set(DRAFT_KEY,JSON.stringify({html:currentHTML(),revision:state.revision,time:Date.now()}));};
@@ -144,7 +177,9 @@ export function createEditor(state,book,panels) {
     $('image-tools').classList.toggle('has-image',!!image);
     $('image-tools').hidden=!image;$('text-tools').hidden=!!image;
     if(image&&!$('style-editor').hidden)closeStyleEditor();
-    for(const id of ['image-wrap','image-align','image-width','image-alt','delete-image'])$(id).disabled=!image;
+    if(cropping&&!image)cropping.stop();
+    for(const id of ['image-wrap','image-align','image-width','image-alt','delete-image','image-crop'])$(id).disabled=!image||!!cropping;
+    $('image-crop').setAttribute('aria-pressed',String(!!cropping));
     $('image-wrap').querySelector('[value=inline]').disabled=!!figure;
     $('figure-text').hidden=!image||!!figure?.overlay;
     $('figure-caption').hidden=!image;
@@ -169,7 +204,8 @@ export function createEditor(state,book,panels) {
   }
   async function save() {
     clearTimeout(timer);
-    if(uploadCount){notify('Дождитесь загрузки изображения.');return false;}
+    // Идет загрузка или обрезка картинки: сохраняем сразу после нее.
+    if(uploadCount){status('Сохранение после загрузки изображения…');timer=setTimeout(save,400);return false;}
     if(flight){await flight;return dirty?save():true;}
     if(!dirty)return true;
     flight=(async()=>{
@@ -254,10 +290,70 @@ export function createEditor(state,book,panels) {
       const cancel=()=>{handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',end);handle.removeEventListener('pointercancel',cancel);render();};
       handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',cancel);
     });
-    return {dom,update(n){if(n.type!==current.type)return false;current=n;render();return true;},
+    // Обрезка: рамка поверх картинки, края и углы тянутся, внутренность перетаскивается.
+    let crop=null;
+    const stopCrop=()=>{if(!crop)return;crop.ui.remove();crop=null;dom.classList.remove('cropping');dom.draggable=true;dom.parentElement?.classList.remove('cropping');cropping=null;syncToolbar();};
+    const startCrop=()=>{
+      if(crop)return;
+      if(!(img.naturalWidth>0)){notify('Картинка еще не загрузилась.');return;}
+      const ui=document.createElement('span');ui.className='crop-ui';ui.contentEditable='false';
+      const shades=['top','right','bottom','left'].map(side=>{const d=document.createElement('span');d.className=`crop-shade crop-shade-${side}`;return d;});
+      const frame=document.createElement('span');frame.className='crop-frame';
+      for(const edge of ['n','e','s','w','ne','se','sw','nw']){const h=document.createElement('span');h.className=`crop-handle crop-${edge}`;h.dataset.edge=edge;frame.append(h);}
+      const bar=document.createElement('span');bar.className='crop-bar';
+      const saveButton=document.createElement('button');saveButton.type='button';saveButton.textContent='Сохранить';saveButton.className='crop-save';
+      const cancelButton=document.createElement('button');cancelButton.type='button';cancelButton.textContent='Отмена';cancelButton.className='crop-cancel';
+      bar.append(saveButton,cancelButton);ui.append(...shades,frame,bar);dom.append(ui);
+      crop={ui,box:{l:0,t:0,r:1,b:1}};dom.classList.add('cropping');dom.draggable=false;
+      if(current.type.name==='figure_image')dom.parentElement?.classList.add('cropping');
+      const layout=()=>{
+        const {l,t,r,b}=crop.box,pc=v=>`${v*100}%`;
+        Object.assign(frame.style,{left:pc(l),top:pc(t),width:pc(r-l),height:pc(b-t)});
+        Object.assign(shades[0].style,{left:0,top:0,width:'100%',height:pc(t)});
+        Object.assign(shades[2].style,{left:0,top:pc(b),width:'100%',height:pc(1-b)});
+        Object.assign(shades[3].style,{left:0,top:pc(t),width:pc(l),height:pc(b-t)});
+        Object.assign(shades[1].style,{left:pc(r),top:pc(t),width:pc(1-r),height:pc(b-t)});
+        Object.assign(bar.style,{top:pc(b),left:pc((l+r)/2)});
+        const W=img.naturalWidth,H=img.naturalHeight;
+        saveButton.title=`Сохранить обрезку: ${Math.round(r*W)-Math.round(l*W)}×${Math.round(b*H)-Math.round(t*H)} px из ${W}×${H}`;
+      };
+      layout();
+      frame.addEventListener('pointerdown',e=>{
+        e.preventDefault();e.stopPropagation();frame.setPointerCapture(e.pointerId);
+        const edge=e.target.dataset?.edge||'move', rect=img.getBoundingClientRect(), start={...crop.box}, x0=e.clientX, y0=e.clientY;
+        const minW=Math.min(1,12/rect.width), minH=Math.min(1,12/rect.height), clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+        const move=ev=>{
+          const dx=(ev.clientX-x0)/rect.width, dy=(ev.clientY-y0)/rect.height, b={...start};
+          if(edge==='move'){const w=start.r-start.l,h=start.b-start.t;b.l=clamp(start.l+dx,0,1-w);b.r=b.l+w;b.t=clamp(start.t+dy,0,1-h);b.b=b.t+h;}
+          else{
+            if(edge.includes('w'))b.l=clamp(start.l+dx,0,start.r-minW);
+            if(edge.includes('e'))b.r=clamp(start.r+dx,start.l+minW,1);
+            if(edge.includes('n'))b.t=clamp(start.t+dy,0,start.b-minH);
+            if(edge.includes('s'))b.b=clamp(start.b+dy,start.t+minH,1);
+          }
+          crop.box=b;layout();
+        };
+        const end=()=>{frame.removeEventListener('pointermove',move);frame.removeEventListener('pointerup',end);frame.removeEventListener('pointercancel',end);};
+        frame.addEventListener('pointermove',move);frame.addEventListener('pointerup',end);frame.addEventListener('pointercancel',end);
+      });
+      cancelButton.onclick=e=>{e.preventDefault();stopCrop();editor.focus();};
+      saveButton.onclick=async e=>{
+        e.preventDefault();
+        const W=img.naturalWidth,H=img.naturalHeight,{l,t,r,b}=crop.box;
+        const x=Math.round(l*W),y=Math.round(t*H),width=Math.round(r*W)-x,height=Math.round(b*H)-y;
+        if(x===0&&y===0&&width===W&&height===H){stopCrop();editor.focus();return;}
+        saveButton.disabled=cancelButton.disabled=true;saveButton.textContent='Сохранение…';
+        try{await cropImageAt(getPos(),{x,y,width,height},W);stopCrop();}
+        catch(err){notify(err.message,12000);saveButton.disabled=cancelButton.disabled=false;saveButton.textContent='Сохранить';}
+      };
+      cropping={stop:stopCrop};syncToolbar();
+    };
+    dom.izdtStartCrop=startCrop;
+    return {dom,update(n){if(n.type!==current.type)return false;if(crop&&n.attrs.src!==current.attrs.src)stopCrop();current=n;render();return true;},
       selectNode(){dom.classList.add('ProseMirror-selectednode');},
-      deselectNode(){dom.classList.remove('ProseMirror-selectednode');},
-      stopEvent:e=>e.target===handle,ignoreMutation:()=>true};
+      deselectNode(){dom.classList.remove('ProseMirror-selectednode');stopCrop();},
+      destroy(){if(crop)cropping=null;},
+      stopEvent:e=>e.target===handle||!!e.target.closest?.('.crop-ui'),ignoreMutation:()=>true};
   }
   // Плашка с текстом на картинке: перетаскивается за ручку, ширина меняется маркером справа.
   function overlayView(node,editor,getPos) {
@@ -305,7 +401,7 @@ export function createEditor(state,book,panels) {
     state.editing=true;document.body.classList.add('editing');book.setAttribute('spellcheck','true');$('editor-toolbar').hidden=false;$('toggle-editor').classList.add('active');
     view=new EditorView({mount:book},{
       state:EditorState.create({schema,doc,plugins:[
-        history(),figures,ids,typography,
+        history(),figures,replaced,ids,typography,
         keymap({'Mod-z':undo,'Shift-Mod-z':redo,'Mod-y':redo,
           'Mod-b':toggleMark(schema.marks.strong),'Mod-i':toggleMark(schema.marks.em),'Mod-u':toggleMark(schema.marks.underline),
           'Mod-Home':(s,d)=>{d(s.tr.setSelection(TextSelection.atStart(s.doc)).scrollIntoView());return true;},
@@ -469,6 +565,7 @@ export function createEditor(state,book,panels) {
       tr.setNodeMarkup(figure.overlay.pos,undefined,convertOverlay(figure.overlay.node.attrs,mode==='square',next.width,next.align));
     finish(tr.setSelection(NodeSelection.create(tr.doc,selected.pos)));
   }
+  $('image-crop').onclick=()=>{const image=selectedImage();if(!image)return;view.nodeDOM(image.pos)?.izdtStartCrop?.();};
   $('image-wrap').onchange=e=>changeImage({mode:e.target.value});
   $('image-align').onchange=e=>{
     const image=selectedImage();if(!image)return;
@@ -630,5 +727,6 @@ export function createEditor(state,book,panels) {
   });
   observer.observe($('editor-toolbar'));
   window.addEventListener('beforeunload',e=>{if(dirty||uploadCount){e.preventDefault();e.returnValue='';}});
-  return {toggle,save,applyBookStyles:renderStyles,readDraft,clearDraft,get dirty(){return dirty;}};
+  const cancelCrop=()=>{if(!cropping)return false;cropping.stop();view?.focus();return true;};
+  return {toggle,save,cancelCrop,applyBookStyles:renderStyles,readDraft,clearDraft,get dirty(){return dirty;}};
 }

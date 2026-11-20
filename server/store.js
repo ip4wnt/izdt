@@ -102,6 +102,33 @@ export async function regenerate() {
   await atomic('generated/index.html',pageHTML(book));
   return book;
 }
+// Обрезанные картинки: старый файл заменяется новым (img-replaced.json: старое имя → новое).
+// Старый файл удаляется при ближайшем сохранении книги, в которой на него больше нет ссылок;
+// старый адрес перенаправляется на новый (снимки истории, черновики, отмена в редакторе).
+const replacedFile='img-replaced.json';
+export const getReplaced=()=>readJSON(replacedFile,{});
+export async function resolveReplaced(name){
+  const map=await getReplaced();let next=name;
+  for(let i=0;i<20&&map[next];i++)next=map[next];
+  return next===name?null:next;
+}
+export async function markReplaced(oldName,newName){
+  const map=await getReplaced();map[oldName]=newName;
+  for(const k of Object.keys(map))if(map[k]===oldName)map[k]=newName;
+  await json(replacedFile,map);
+}
+async function applyReplaced(root){
+  const map=await getReplaced();if(!Object.keys(map).length)return map;
+  for(const img of root.querySelectorAll('img[src^="/books/bees/img/"]')){
+    const name=path.basename(img.getAttribute('src'));let next=name;
+    for(let i=0;i<20&&map[next];i++)next=map[next];
+    if(next!==name){img.setAttribute('src',`/books/bees/img/${next}`);img.removeAttribute('width');img.removeAttribute('height');}
+  }
+  return map;
+}
+async function removeReplaced(map,html){
+  for(const old of Object.keys(map))if(!html.includes(`/img/${old}`))await unlink(path.join(bookDir,'img',old)).catch(e=>{if(e.code!=='ENOENT')throw e;});
+}
 export async function saveBook(html,revision) {
   const previous=await getBook();
   const onDisk=await readFile(path.join(bookDir,'content.html'),'utf8');
@@ -111,6 +138,7 @@ export async function saveBook(html,revision) {
     throw Object.assign(new Error(`Книга изменена в другой вкладке или файл content.html заменён извне (синхронизация, git). Ваш текст сохранён в history/${rescue}. Обновите страницу.`),{status:409});
   }
   const normalized=normalize(html);
+  const replaced=await applyReplaced(normalized.root);
   await fillImageSizes(normalized.root,bookDir);normalized.html=normalized.root.innerHTML;
   if(!normalized.root.textContent.trim()) throw Object.assign(new Error('Книга не может быть пустой.'),{status:400});
   const warnings=[];
@@ -126,6 +154,7 @@ export async function saveBook(html,revision) {
   await atomic('content.html',normalized.html);
   await mkdir(historyDir,{recursive:true});await atomic('history/latest.html',normalized.html);
   await json('meta.json',{title:previous.title,revision:previous.revision+1});
+  await removeReplaced(replaced,normalized.html);
   return {...await regenerate(),warnings};
 }
 export async function readerPage(reader) {

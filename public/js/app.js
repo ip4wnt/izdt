@@ -24,6 +24,7 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&e.code==='KeyE'){e.preventDefault();editor.toggle();return;}
   if(e.key==='Escape'){
     document.getElementById('selection-note').hidden=true;
+    if(state.editing&&editor.cancelCrop()){e.preventDefault();return;}
     if(state.editing){e.preventDefault();editor.toggle();}else panels.close();
     return;
   }
