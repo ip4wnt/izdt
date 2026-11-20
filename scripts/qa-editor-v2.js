@@ -5,6 +5,7 @@ import path from 'node:path';
 import {spawn} from 'node:child_process';
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
+import {nbspIndices,NBSP} from '../client/typography.js';
 
 // Isolated book: this suite never edits data/books/bees or real reader notes.
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -599,6 +600,38 @@ try{
   for(let i=0;i<6;i++){assert.equal(await anchor(),anchorBefore,`text moved after leaving the editor (sample ${i})`);await slowPage.waitForTimeout(150);}
   await slowContext.close();
   pass('slow images: entering and leaving the editor keeps the reading position');
+  // Неразрывные пробелы при вставке, замене выделенного текста, в подписи и заголовке; доходят до сохраненного файла.
+  {
+    const nb=t=>{const i=new Set(nbspIndices(t));return [...t].map((c,k)=>i.has(k)?NBSP:c).join('');};
+    const S='Пчелы в улье и на лугу — 5 кг меда.';
+    await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
+    const text=id=>page.locator(`#${id}`).evaluate(el=>el.textContent);
+    const paste=t=>page.evaluate(t=>navigator.clipboard.writeText(t),t).then(()=>page.keyboard.press('Control+v'));
+    // Вставка
+    await clickText('harvest');await page.keyboard.press('Home');await paste(S+' ');
+    await page.waitForFunction(([id,t])=>document.getElementById(id).textContent.startsWith(t),['harvest',nb(S)]);
+    // Замена выделения вводом и вставкой
+    await selectText('pollination',20);await page.keyboard.type(S+' ');
+    await page.waitForFunction(([id,t])=>document.getElementById(id).textContent.startsWith(t),['pollination',nb(S)]);
+    await selectText('example',15);await paste(S+' ');
+    await page.waitForFunction(([id,t])=>document.getElementById(id).textContent.startsWith(t),['example',nb(S)]);
+    // Заголовок и подпись под картинкой
+    await clickText('general');await page.keyboard.press('End');await page.keyboard.type(' и в улье');
+    await page.waitForFunction(()=>document.getElementById('general').textContent.endsWith(' и\u00a0в\u00a0улье'));
+    const caption=page.locator('figure figcaption p').first();assert.ok(await caption.count(),'a caption exists');
+    await caption.click();await page.keyboard.press('End');await page.keyboard.type(' и в улье');
+    await page.waitForFunction(()=>document.querySelector('figure figcaption p').textContent.endsWith(' и\u00a0в\u00a0улье'));
+    const capId=await caption.getAttribute('id');
+    for(const id of ['harvest','pollination','example','general',capId])assert.match(await page.locator(`#${id}`).getAttribute('data-typo')||'',/^[0-9a-z]+$/,id);
+    await saved();
+    // В файле книги те же неразрывные пробелы.
+    const stored=await page.evaluate(async ids=>{const html=(await (await fetch('/api/book')).json()).html,d=new DOMParser().parseFromString(`<div>${html}</div>`,'text/html');return ids.map(id=>d.getElementById(id)?.textContent||'');},['harvest','pollination','example','general',capId]);
+    assert.ok(stored[0].startsWith(nb(S))&&stored[1].startsWith(nb(S))&&stored[2].startsWith(nb(S)),JSON.stringify(stored.slice(0,3)));
+    assert.ok(stored[3].endsWith(' и\u00a0в\u00a0улье')&&stored[4].endsWith(' и\u00a0в\u00a0улье'),JSON.stringify(stored.slice(3)));
+    await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+    assert.ok((await text('pollination')).startsWith(nb(S)),'reader shows the same non-breaking spaces');
+    pass('non-breaking spaces: paste, replace selection by typing and by paste, heading, figure caption, saved file and reader');
+  }
   assert.deepEqual(errors,[]);pass('no uncaught browser errors');
   await writeFile(path.join(output,'results.json'),JSON.stringify({checks,errors,serverLogs:logs},null,2));
 }catch(e){
