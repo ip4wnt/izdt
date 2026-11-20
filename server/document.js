@@ -19,7 +19,7 @@ export function normalize(html) {
       'font-size':rem, 'line-height':[/^\d(?:\.\d{1,4})?$/, ...rem],
       'text-indent':rem, 'font-family':[/^["']?(?:TT Marxiana|Old Standard TT|Akzidenz-Grotesk Pro|Roboto Condensed|Georgia|Arial|serif|sans-serif)["']?$/],
       'text-align':[/^(left|right|center|justify)$/], 'font-style':[/^(normal|italic)$/],
-      'font-weight':[/^(normal|bold|400|700)$/], 'width':[/^(?:[1-9]\d?(?:\.\d{1,2})?|100)%$/],
+      'font-weight':[/^(normal|bold|400|700)$/], 'letter-spacing':[/^(?:0|0?\.\d{1,3}|1(?:\.0{1,3})?)em$/], 'width':[/^(?:[1-9]\d?(?:\.\d{1,2})?|100)%$/],
       'margin-left':[/^(?:\d{1,2}|100)%$/], 'margin-top':[/^(?:\d{1,2}|[12]\d{2}|300)%$/],
       '--image-width':[/^(?:[1-9]\d?(?:\.\d{1,2})?|100)%$/]
     }},
@@ -34,7 +34,7 @@ export function normalize(html) {
   });
   const root = parseFragment(clean);
   const seen = new Set();
-  for (const el of root.querySelectorAll('[id],h1,h2,h3,p,li,blockquote,[data-style="paragraph"]')) {
+  for (const el of root.querySelectorAll('[id],h1,h2,h3,p,li,blockquote,[data-style="paragraph"],[data-style="paragraph-plain"]')) {
     if (!ID_PATTERN.test(el.id) || seen.has(el.id)) el.id = `b-${randomUUID()}`;
     seen.add(el.id);
   }

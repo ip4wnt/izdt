@@ -26,10 +26,11 @@ export function pageHTML(book, base='') {
 <button data-command="redo" title="Повторить (Ctrl+Y)" aria-label="Повторить">${icon('redo-2')}</button></div>
 <div id="text-tools" class="text-tools">
 <div class="ribbon-group style-controls">
-<select id="text-style" title="Стиль абзаца" aria-label="Стиль текста"><option value="" disabled>Разные стили</option><option value="p">Обычный текст</option><option value="h1">Заголовок 1</option><option value="h2">Заголовок 2</option><option value="h3">Заголовок 3</option><option value="paragraph">Параграф оглавления</option><option value="small">Малый текст</option><option value="caption">Подпись к рисунку</option></select>
+<select id="text-style" title="Стиль абзаца" aria-label="Стиль текста"><option value="" disabled>Разные стили</option><option value="p">Обычный текст</option><option value="h1">Заголовок 1</option><option value="h2">Заголовок 2</option><option value="h3">Заголовок 3</option><option value="paragraph">Параграф оглавления</option><option value="paragraph-plain">Параг. огл. без нумер.</option><option value="small">Малый текст</option><option value="caption">Подпись к рисунку</option></select>
 <button id="style-settings" title="Настроить выбранный стиль: шрифт, размер, интерлиньяж, красную строку и выравнивание для всех абзацев этого стиля" aria-label="Настроить стиль" aria-expanded="false">${icon('sliders-horizontal')}</button>
 <select id="font-family" title="Шрифт" aria-label="Шрифт"><option value="" disabled>Разные шрифты</option><option>TT Marxiana</option><option>Akzidenz-Grotesk Pro</option><option>Georgia</option><option>Arial</option></select>
-<input id="font-size" title="Размер шрифта, rem" aria-label="Размер шрифта" type="number" min=".5" max="8" step=".05"></div>
+<input id="font-size" title="Размер шрифта, rem" aria-label="Размер шрифта" type="number" min=".5" max="8" step=".05">
+<label class="icon-field" title="Разрядка (межбуквенное расстояние), em. 0 — обычная. В оглавлении не отображается"><span class="field-icon" aria-hidden="true">A↔</span><input id="letter-spacing" aria-label="Разрядка" type="number" min="0" max="1" step=".05"></label></div>
 <div class="ribbon-group inline-controls">
 <button data-command="bold" title="Полужирный (Ctrl+B)" aria-label="Полужирный" aria-pressed="false"><b>B</b></button>
 <button data-command="italic" title="Курсив (Ctrl+I)" aria-label="Курсив" aria-pressed="false"><i>I</i></button>

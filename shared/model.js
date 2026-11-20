@@ -5,13 +5,16 @@ export const MAX_IMAGE = 8 * 1024 * 1024;
 export const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/;
 export const READER_PATTERN = /^[0-9a-f-]{36}$/;
 export const escapeHTML = (text = '') => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export const PLAIN_PARAGRAPH = 'paragraph-plain';
+export const PARAGRAPH_SELECTOR = '[data-style="paragraph"],[data-style="paragraph-plain"]';
 export function makeTOC(root, overrides = {}) {
   // Заголовки берутся как есть: ничего не добавляется от системы, для дополнений есть ручные правки.
-  // Параграфы нумеруются сквозным образом по всей книге.
+  // Параграфы нумеруются сквозным образом по всей книге; «параграф без нумерации» стоит на том же уровне,
+  // но номер не получает и счетчик не сдвигает. Текст берется без оформления (разрядка и т.п. не переносятся).
   let count = 0;
-  return [...root.querySelectorAll('h2,h3,[data-style="paragraph"]')].flatMap(el => {
+  return [...root.querySelectorAll(`h2,h3,${PARAGRAPH_SELECTOR}`)].flatMap(el => {
     const level = el.tagName === 'H2' ? 1 : el.tagName === 'H3' ? 2 : 3;
-    const number = level === 3 ? String(++count) : '';
+    const number = level === 3 && el.getAttribute('data-style') !== PLAIN_PARAGRAPH ? String(++count) : '';
     const autoTitle = el.textContent.trim().replace(/^\d+\.\s*/, '');
     const override = overrides[el.id] || {};
     return [{id:el.id, level, number, autoTitle, title:override.title ?? autoTitle, hidden:!!override.hidden, manual:Object.keys(override).length > 0}];
@@ -64,7 +67,7 @@ export function sanitizeStyles(input) {
 export const mergeStyles = overrides => Object.fromEntries(STYLE_KEYS.map(key => [key, {...BASE_STYLES[key], ...(overrides?.[key] || {})}]));
 const FAMILY_CSS = {'TT Marxiana':'var(--serif)','Akzidenz-Grotesk Pro':'var(--sans)',Georgia:'Georgia,serif',Arial:'Arial,sans-serif'};
 const SELECTORS = {
-  p:'.book p:not(.small):not(.caption):not(.signature):not([data-style=paragraph])', small:'.book p.small:not(.signature)', paragraph:'.book p[data-style=paragraph]',
+  p:'.book p:not(.small):not(.caption):not(.signature):not([data-style=paragraph]):not([data-style=paragraph-plain])', small:'.book p.small:not(.signature)', paragraph:'.book p[data-style=paragraph],.book p[data-style=paragraph-plain]',
   caption:'.book p.caption',
   h1:'.book h1', h2:'.book h2', h3:'.book h3'
 };

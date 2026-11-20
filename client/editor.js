@@ -13,7 +13,7 @@ import {typography, retypeAll} from './typography-plugin.js';
 const $=id=>document.getElementById(id);
 const uid=()=>`b-${crypto.randomUUID()}`;
 const imageTypes=new Set(['image','figure_image']);
-const controlIds=['text-style','font-family','font-size','line-height','text-indent','text-align'];
+const controlIds=['text-style','font-family','font-size','letter-spacing','line-height','text-indent','text-align'];
 const clampRound=(v,min,max)=>Math.round(Math.min(max,Math.max(min,v)));
 /** Блок без плашки и подписи снова становится обычной картинкой с тем же обтеканием и шириной. Возвращает позицию картинки. */
 function unwrapBare(tr,figurePos) {
@@ -172,8 +172,10 @@ export function createEditor(state,book,panels) {
       const direct=run.marks.find(m=>m.type===schema.marks.text_style)?.attrs;
       return key==='size'?parseFloat(direct?.size||run.node.attrs.size||d.size):direct?.family||run.node.attrs.family||d.family;
     };
-    const marker=runs.length&&runs.every(r=>r.marks.some(m=>m.type===schema.marks.paragraph_label));
-    setControl('text-style',marker?'paragraph':common(types));
+    const labels=runs.map(r=>r.marks.find(m=>m.type===schema.marks.paragraph_label));
+    const marker=runs.length&&labels.every(Boolean)?common(labels.map(m=>m.attrs.plain?'paragraph-plain':'paragraph')):false;
+    setControl('text-style',marker!==false?marker:common(types));
+    setControl('letter-spacing',common(runs.map(r=>parseFloat(r.marks.find(m=>m.type===schema.marks.letter_spacing)?.attrs.value)||0)));
     setControl('font-size',common(runs.map(r=>valueFor(r,'size'))));
     setControl('font-family',common(runs.map(r=>valueFor(r,'family'))));
     setControl('line-height',common(blocks.map(({node})=>{
@@ -183,7 +185,7 @@ export function createEditor(state,book,panels) {
     setControl('text-indent',common(blocks.map(({node})=>parseFloat(node.attrs.indent??DEFAULTS[styleName(node)]?.indent??3.075))));
     setControl('text-align',common(blocks.map(({node})=>node.attrs.align||(node.attrs.signature?'right':DEFAULTS[styleName(node)]?.align)||'left')));
     for(const [command,mark] of Object.entries({bold:'strong',italic:'em',underline:'underline',strikeThrough:'strike'})){
-      const active=runs.length&&runs.every(r=>r.marks.some(m=>m.type===schema.marks[mark])||(mark==='em'&&(styleName(r.node)==='paragraph'||r.node.attrs.signature||r.marks.some(m=>m.type===schema.marks.paragraph_label))));
+      const active=runs.length&&runs.every(r=>r.marks.some(m=>m.type===schema.marks[mark])||(mark==='em'&&(/^paragraph/.test(styleName(r.node))||r.node.attrs.signature||r.marks.some(m=>m.type===schema.marks.paragraph_label))));
       const button=document.querySelector(`[data-command="${command}"]`);
       button.setAttribute('aria-pressed',String(!!active));
     }
@@ -537,8 +539,12 @@ export function createEditor(state,book,panels) {
     if(!view||!type)return;
     captureNativeSelection();
     const {from,to,empty,$from,$to}=view.state.selection;
-    if(type==='paragraph'&&!empty&&$from.sameParent($to)){
-      finish(view.state.tr.addMark(from,to,schema.marks.paragraph_label.create({id:uid()})));return;
+    const label=type==='paragraph'||type==='paragraph-plain';
+    if(label&&!empty&&$from.sameParent($to)){
+      // Смена вида параграфа у уже размеченного фрагмента сохраняет его id (ссылки оглавления не ломаются).
+      let id=null;view.state.doc.nodesBetween(from,to,n=>{id=id||n.marks?.find(m=>m.type===schema.marks.paragraph_label)?.attrs.id;});
+      const tr=view.state.tr.removeMark(from,to,schema.marks.paragraph_label);
+      finish(tr.addMark(from,to,schema.marks.paragraph_label.create({id:id||uid(),plain:type==='paragraph-plain'})));return;
     }
     const blocks=selectedBlocks();let tr=view.state.tr;
     for(const {node,pos} of blocks) {
@@ -547,7 +553,7 @@ export function createEditor(state,book,panels) {
       tr.setNodeMarkup(pos,heading?schema.nodes.heading:schema.nodes.paragraph,attributes);
       // A named style resets direct font overrides rather than being hidden by old inline sizes.
       tr.removeMark(pos+1,pos+node.nodeSize-1,schema.marks.text_style);
-      if(type!=='paragraph')tr.removeMark(pos+1,pos+node.nodeSize-1,schema.marks.paragraph_label);
+      if(!label)tr.removeMark(pos+1,pos+node.nodeSize-1,schema.marks.paragraph_label);
     }
     finish(tr);
   }
@@ -599,7 +605,7 @@ export function createEditor(state,book,panels) {
   function closeStyleEditor(){$('style-editor').hidden=true;$('style-settings').setAttribute('aria-expanded','false');}
   $('style-settings').onclick=()=>{
     if(!$('style-editor').hidden){closeStyleEditor();return;}
-    const current=$('text-style').value;if(STYLE_KEYS.includes(current))$('style-target').value=current;
+    const current=$('text-style').value.replace('paragraph-plain','paragraph');if(STYLE_KEYS.includes(current))$('style-target').value=current;
     fillStyleEditor();$('style-editor').hidden=false;$('style-settings').setAttribute('aria-expanded','true');
   };
   $('style-target').onchange=fillStyleEditor;
@@ -618,6 +624,15 @@ export function createEditor(state,book,panels) {
   renderStyles();
   $('font-family').onchange=e=>inlineAttribute('family',e.target.value);
   numberControl('font-size',.5,8,v=>inlineAttribute('size',`${v}rem`));
+  numberControl('letter-spacing',0,1,v=>{
+    if(!view)return;
+    captureNativeSelection();
+    const {from,to,empty}=view.state.selection, type=schema.marks.letter_spacing, mark=v>0?type.create({value:`${Number(v.toFixed(3))}em`}):null;
+    let tr=view.state.tr;
+    if(empty){tr.removeStoredMark(type);if(mark)tr.addStoredMark(mark);}
+    else{tr.removeMark(from,to,type);if(mark)tr.addMark(from,to,mark);}
+    finish(tr);
+  });
   numberControl('line-height',.5,16,v=>blockAttribute('leading',`${v}rem`));
   numberControl('text-indent',0,10,v=>blockAttribute('indent',`${v}rem`));
   $('text-align').onchange=e=>blockAttribute('align',e.target.value);
@@ -625,7 +640,7 @@ export function createEditor(state,book,panels) {
     if(!view)return;
     const {from,to,empty}=view.state.selection;let tr=view.state.tr;
     if(empty)tr.setStoredMarks([]);
-    else for(const mark of ['text_style','strong','em','underline','strike'])tr.removeMark(from,to,schema.marks[mark]);
+    else for(const mark of ['text_style','letter_spacing','strong','em','underline','strike'])tr.removeMark(from,to,schema.marks[mark]);
     for(const {node,pos} of selectedBlocks())tr.setNodeMarkup(pos,undefined,{...node.attrs,size:null,family:null,leading:null,indent:null,align:null,signature:false});
     finish(tr);
   };

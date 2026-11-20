@@ -17,6 +17,16 @@ test('TOC follows h2, h3 and paragraph and persists overrides',()=>{
   assert.deepEqual(toc.map(t=>t.level),[1,2,3,2,3]);
   assert.equal(toc[0].title,'Part');assert.equal(toc[2].number,'1');assert.equal(toc[1].title,'Manual');assert.equal(toc[2].hidden,true);assert.equal(toc[3].title,'New');assert.equal(toc[4].number,'2');
 });
+test('plain paragraph is listed without number and keeps numbering continuous',()=>{
+  const {root}=normalize('<h3 id="c">C</h3><p><span id="a" data-style="paragraph">1. First</span>x</p><p><span id="b" data-style="paragraph-plain">Note</span>x</p><p id="d" data-style="paragraph-plain">Block</p><p><span id="e" data-style="paragraph">Second</span></p>');
+  const toc=makeTOC(root);
+  assert.deepEqual(toc.map(t=>[t.id,t.level,t.number]),[['c',2,''],['a',3,'1'],['b',3,''],['d',3,''],['e',3,'2']]);
+});
+test('letter spacing survives sanitizer but TOC title stays plain text',()=>{
+  const {html,root}=normalize('<h3 id="c">Гл<span style="letter-spacing:0.2em">ава</span></h3><p><span style="letter-spacing:5em;font-size:2rem">x</span></p>');
+  assert.match(html,/letter-spacing:0\.2em/);assert.doesNotMatch(html,/5em/);
+  assert.equal(makeTOC(root)[0].title,'Глава');
+});
 test('highlight spans inline formatting, supports overlaps, retains text',()=>{
   const html='<p id="a">Hello <em>beautiful</em> world.</p>';
   const result=annotate(html,[{id:'n1',blockId:'a',start:3,quote:'lo beautiful w'},{id:'n2',blockId:'a',start:6,quote:'beautiful'}]);

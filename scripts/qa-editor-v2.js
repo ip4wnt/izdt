@@ -632,6 +632,33 @@ try{
     assert.ok((await text('pollination')).startsWith(nb(S)),'reader shows the same non-breaking spaces');
     pass('non-breaking spaces: paste, replace selection by typing and by paste, heading, figure caption, saved file and reader');
   }
+  // Параграф оглавления без нумерации и разрядка: в оглавлении без номера и без разрядки, сквозная нумерация не сбивается.
+  {
+    await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
+    await clickText('example');await page.selectOption('#text-style','paragraph-plain');
+    await page.waitForFunction(()=>document.getElementById('example').dataset.style==='paragraph-plain');
+    assert.equal(await page.locator('#text-style').inputValue(),'paragraph-plain');
+    await selectText('apiaries',10);await number('letter-spacing',.2);
+    await page.waitForFunction(()=>[...document.querySelectorAll('#apiaries span')].some(s=>s.style.letterSpacing==='0.2em'));
+    assert.equal(await page.locator('#letter-spacing').inputValue(),'0.2');
+    await saved();
+    const book=await page.evaluate(async()=>(await (await fetch('/api/book')).json()));
+    assert.match(book.html,/id="example"[^>]*data-style="paragraph-plain"|data-style="paragraph-plain"[^>]*id="example"/);
+    assert.match(book.html,/letter-spacing:0\.2em/);
+    const toc=Object.fromEntries(book.toc.map(t=>[t.id,t]));
+    assert.equal(toc.example.level,3);assert.equal(toc.example.number,'');assert.equal(toc['distribution-title'].number,'3');assert.equal(toc['benefits-title'].number,'4');
+    await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+    await page.waitForFunction(()=>{const el=document.querySelector('#book #example');return el?.isConnected&&getComputedStyle(el).fontStyle==='italic';},null,{timeout:5000});
+    await page.locator('#apiaries').scrollIntoViewIfNeeded();
+    await page.screenshot({path:path.join(output,'paragraph-plain-spacing.png')});
+    // Откат правок, чтобы следующие проверки шли по исходному тексту.
+    await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
+    await clickText('example');await page.selectOption('#text-style','p');
+    await selectText('apiaries',10);await number('letter-spacing',0);
+    await page.waitForFunction(()=>![...document.querySelectorAll('#apiaries span')].some(s=>s.style.letterSpacing));
+    await saved();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+    pass('plain TOC paragraph has no number and keeps numbering; letter spacing is saved and TOC stays plain');
+  }
   assert.deepEqual(errors,[]);pass('no uncaught browser errors');
   await writeFile(path.join(output,'results.json'),JSON.stringify({checks,errors,serverLogs:logs},null,2));
 }catch(e){

@@ -4,6 +4,8 @@ import {mergeStyles} from '../shared/model.js';
 
 /** Действующие значения именованных стилей: базовые плюс правки из styles.json. */
 export const DEFAULTS = mergeStyles({});
+// Параграф без нумерации оформляется общим стилем «Параграф оглавления».
+Object.defineProperty(DEFAULTS,'paragraph-plain',{get:()=>DEFAULTS.paragraph,enumerable:false});
 export function applyStyles(overrides) { Object.assign(DEFAULTS, mergeStyles(overrides)); }
 const uid = () => `b-${crypto.randomUUID()}`;
 const cssSize = value => /^\d+(?:\.\d+)?rem$/.test(value || '') ? value : null;
@@ -14,7 +16,7 @@ const attrs = {
   indent:{default:null}, signature:{default:false}, typo:{default:null}
 };
 function blockAttrs(dom) {
-  return {id:dom.id || null, kind:dom.dataset.style === 'paragraph' ? 'paragraph' : dom.classList.contains('small') ? 'small' : dom.classList.contains('caption') ? 'caption' : 'p',
+  return {id:dom.id || null, kind:dom.dataset.style === 'paragraph' || dom.dataset.style === 'paragraph-plain' ? dom.dataset.style : dom.classList.contains('small') ? 'small' : dom.classList.contains('caption') ? 'caption' : 'p',
     align:dom.style.textAlign || null, size:cssSize(dom.style.fontSize), family:font(dom.style.fontFamily),
     leading:dom.style.lineHeight || null, indent:cssSize(dom.style.textIndent), signature:dom.classList.contains('signature'),
     typo:/^[0-9a-z]{1,8}$/.test(dom.dataset.typo || '') ? dom.dataset.typo : null};
@@ -24,7 +26,7 @@ function blockDOM(node) {
   if(a.id)out.id=a.id;
   const classes=[a.kind==='small'||a.kind==='caption'?a.kind:'',a.signature?'signature':''].filter(Boolean);
   if(classes.length)out.class=classes.join(' ');
-  if(a.kind==='paragraph')out['data-style']='paragraph';
+  if(a.kind==='paragraph'||a.kind==='paragraph-plain')out['data-style']=a.kind;
   if(a.typo)out['data-typo']=a.typo;
   const styles = [['text-align',a.align],['font-size',a.size],['font-family',a.family],['line-height',a.leading],['text-indent',a.indent]]
     .filter(([,v])=>v).map(([k,v])=>`${k}:${v}`);
@@ -106,8 +108,14 @@ export const schema = new Schema({
     text_style:{attrs:{size:{default:null},family:{default:null}},
       parseDOM:[{tag:'span[style]',getAttrs:d=>cssSize(d.style.fontSize)||font(d.style.fontFamily)?{size:cssSize(d.style.fontSize),family:font(d.style.fontFamily)}:false}],
       toDOM:m=>['span',{style:[m.attrs.size?`font-size:${m.attrs.size}`:'',m.attrs.family?`font-family:${m.attrs.family}`:''].filter(Boolean).join(';')},0]},
-    paragraph_label:{attrs:{id:{default:null}},parseDOM:[{tag:'span[data-style=paragraph]',getAttrs:d=>({id:d.id||uid()})}],
-      toDOM:m=>['span',{'data-style':'paragraph',id:m.attrs.id},0]},
+    paragraph_label:{attrs:{id:{default:null},plain:{default:false}},parseDOM:[
+      {tag:'span[data-style=paragraph]',getAttrs:d=>({id:d.id||uid(),plain:false})},
+      {tag:'span[data-style=paragraph-plain]',getAttrs:d=>({id:d.id||uid(),plain:true})}],
+      toDOM:m=>['span',{'data-style':m.attrs.plain?'paragraph-plain':'paragraph',id:m.attrs.id},0]},
+    // Разрядка: отдельная метка, чтобы сочеталась с размером и шрифтом; в оглавление попадает только текст.
+    letter_spacing:{attrs:{value:{}},
+      parseDOM:[{style:'letter-spacing',getAttrs:v=>/^(?:0?\.\d{1,3}|1(?:\.0{1,3})?)em$/.test(v)&&parseFloat(v)>0?{value:`${Number(parseFloat(v).toFixed(3))}em`}:false}],
+      toDOM:m=>['span',{style:`letter-spacing:${m.attrs.value}`},0]},
     link:{attrs:{href:{},title:{default:null}},inclusive:false,
       parseDOM:[{tag:'a[href]',getAttrs:d=>/^(https?:|mailto:|#)/.test(d.getAttribute('href'))?{href:d.getAttribute('href'),title:d.getAttribute('title')}:false}],
       toDOM:m=>['a',m.attrs,0]}
