@@ -2,7 +2,7 @@
 @font-face{font-family:"TT Marxiana";src:url("./fonts/marxiana-italic.ttf") format("truetype");font-style:italic;font-weight:400;font-display:swap}
 @font-face{font-family:"Akzidenz-Grotesk Pro";src:url("./fonts/akzidenz-boldcn.ttf") format("truetype");font-weight:700;font-display:swap}
 :root{font-size:100%;--gutter:2rem;--paper:#f2f2f2;--panel:#fafafa;--ink:#111;--muted:#636363;--line:#c9c9c9;--highlight:#ffff00;--ui:1rem;--body:2.05rem;--rail:5.94rem;--book-width:67.074rem;--panel-width:57.45vw;--serif:"TT Marxiana",Georgia,serif;--sans:"Akzidenz-Grotesk Pro","Arial Narrow",sans-serif;color-scheme:light}
-:root[data-theme=dark]{--paper:#23231f;--panel:#2e2e29;--ink:#deded1;--muted:#aaa99c;--line:#53534b;color-scheme:dark}
+:root[data-theme=dark]{--paper:#1e1e1e;--panel:#282828;--ink:#e5e5e5;--muted:#a3a3a3;--line:#4a4a4a;color-scheme:dark}
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);overflow-x:hidden}
 body::after{content:"";position:fixed;inset:0;z-index:70;pointer-events:none;background:url("./assets/noise.png") repeat;opacity:.14;mix-blend-mode:multiply}
 button,input,select{font:inherit;color:inherit}button{cursor:pointer;background:none;border:0}button:disabled{opacity:.5;cursor:wait}
@@ -34,7 +34,7 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .opening{display:grid;grid-template-columns:25.9rem 1fr;align-items:start;position:relative;min-height:66.72rem;padding-bottom:4rem;clear:both}
 .frontispiece{width:53.116rem;height:auto;object-fit:contain;mix-blend-mode:multiply;max-width:100%}
 .opening>.frontispiece{grid-column:1/-1;grid-row:1;margin:2.476rem 0 0 -4.208rem}
-[data-theme=dark] .frontispiece{filter:invert(.87);mix-blend-mode:screen}
+[data-theme=dark] .frontispiece{filter:invert(.9);mix-blend-mode:screen}
 .opening-titles{grid-column:2;grid-row:1;margin-top:36.75rem;width:100%;text-align:center;position:relative;min-width:0}
 .book h1{font-size:3.3825rem;font-weight:400;text-transform:uppercase;text-align:center;line-height:1.53;margin:0 0 1rem}
 .book h2{font-size:2.46rem;font-weight:400;text-transform:uppercase;text-align:center;line-height:1.53;margin:0}
@@ -61,7 +61,7 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .book .image-figure>.figure-image[data-align=center]{justify-self:center}
 .book .image-figure>.figure-image[data-align=right]{justify-self:end}
 /* Темная тема: гравюры инвертируются одинаково, и в блоке с подписью, и внутри абзаца. */
-[data-theme=dark] .book .image-figure>img,[data-theme=dark] .book .image-figure>.image-shell.figure-image,[data-theme=dark] .book img.book-image,[data-theme=dark] .book .image-shell.book-image{filter:invert(.87);mix-blend-mode:screen}
+[data-theme=dark] .book .image-figure>img,[data-theme=dark] .book .image-figure>.image-shell.figure-image,[data-theme=dark] .book img.book-image,[data-theme=dark] .book .image-shell.book-image{filter:invert(.9);mix-blend-mode:screen}
 /* Подпись под картинкой: вторая строка сетки, ширина и положение как у картинки (--image-width ставит редактор). */
 .book .image-figure>.image-caption{grid-area:2/1;width:var(--image-width,100%);max-width:100%;justify-self:start;margin:.8rem 0 0;box-sizing:border-box}
 .book .image-figure[data-align=center]>.image-caption{justify-self:center}
