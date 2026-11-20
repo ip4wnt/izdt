@@ -12,15 +12,16 @@ export function normalize(html) {
     allowedTags: ['div','section','header','h1','h2','h3','p','span','em','i','strong','b','u','s','br','hr','img','figure','figcaption','blockquote','ul','ol','li','a'],
     allowedAttributes: {
       '*':['id','class','style','data-style','data-typo'],
-      img:['src','alt','width','height','data-align'], a:['href','title']
+      img:['src','alt','width','height','data-align'], figure:['data-align'], a:['href','title']
     },
-    allowedClasses: {'*':['opening','frontispiece','opening-titles','paragraph','small','signature','divider-short','divider-long','wrap-left','wrap-right','wrap-block','wrap-inline','book-image','image-figure','figure-image','image-overlay']},
+    allowedClasses: {'*':['opening','frontispiece','opening-titles','paragraph','small','signature','divider-short','divider-long','wrap-left','wrap-right','wrap-block','wrap-inline','book-image','image-figure','figure-image','image-overlay','image-caption','caption']},
     allowedStyles: {'*':{
       'font-size':rem, 'line-height':[/^\d(?:\.\d{1,4})?$/, ...rem],
       'text-indent':rem, 'font-family':[/^["']?(?:TT Marxiana|Old Standard TT|Akzidenz-Grotesk Pro|Roboto Condensed|Georgia|Arial|serif|sans-serif)["']?$/],
       'text-align':[/^(left|right|center|justify)$/], 'font-style':[/^(normal|italic)$/],
       'font-weight':[/^(normal|bold|400|700)$/], 'width':[/^(?:[1-9]\d?(?:\.\d{1,2})?|100)%$/],
-      'margin-left':[/^(?:\d{1,2}|100)%$/], 'margin-top':[/^(?:\d{1,2}|[12]\d{2}|300)%$/]
+      'margin-left':[/^(?:\d{1,2}|100)%$/], 'margin-top':[/^(?:\d{1,2}|[12]\d{2}|300)%$/],
+      '--image-width':[/^(?:[1-9]\d?(?:\.\d{1,2})?|100)%$/]
     }},
     allowedSchemes:['https','http','mailto'],
     transformTags: {

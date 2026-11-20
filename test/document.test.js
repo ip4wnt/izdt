@@ -65,3 +65,13 @@ test('notes match quotes regardless of non-breaking spaces',()=>{
   assert.equal(resolveNote(root,{blockId:'a',start:0,quote:'и воск'}).start,11);
   assert.equal(resolveNote(parseFragment('<p id="a">Мед в улей</p>'),{blockId:'a',start:4,quote:'в\u00A0улей'}).orphan,false);
 });
+test('картинка с подписью и обтеканием переживает сохранение',()=>{
+  const src='<figure class="image-figure wrap-left" id="f1" data-align="left" style="width:40%"><img id="i1" src="/books/bees/img/a.png" alt="Пчелы" class="figure-image" data-align="left" style="width:40%"><figcaption class="image-caption" id="c1"><p id="p1" class="caption">Рис. 28. Пчелы, собирающие воду.</p></figcaption></figure>'
+    +'<figure class="image-figure" id="f2" data-align="center" style="--image-width:45%"><img id="i2" src="/books/bees/img/b.png" alt="" class="figure-image" data-align="center" style="width:45%"><figcaption class="image-caption" id="c2"><p id="p2" class="caption">Рис. 1.</p></figcaption></figure>';
+  const {html}=normalize(src);
+  assert.match(html,/<figure class="image-figure wrap-left" id="f1" data-align="left" style="width:40%">/);
+  assert.match(html,/<figcaption class="image-caption" id="c1"><p id="p1" class="caption">Рис\. 28/);
+  assert.match(html,/style="--image-width:45%"/);
+  assert.equal(normalize(html).html,html);
+  assert.doesNotMatch(normalize('<figure style="--image-width:url(x)">x</figure>').html,/image-width/);
+});

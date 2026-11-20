@@ -14,7 +14,7 @@ const attrs = {
   indent:{default:null}, signature:{default:false}, typo:{default:null}
 };
 function blockAttrs(dom) {
-  return {id:dom.id || null, kind:dom.dataset.style === 'paragraph' ? 'paragraph' : dom.classList.contains('small') ? 'small' : 'p',
+  return {id:dom.id || null, kind:dom.dataset.style === 'paragraph' ? 'paragraph' : dom.classList.contains('small') ? 'small' : dom.classList.contains('caption') ? 'caption' : 'p',
     align:dom.style.textAlign || null, size:cssSize(dom.style.fontSize), family:font(dom.style.fontFamily),
     leading:dom.style.lineHeight || null, indent:cssSize(dom.style.textIndent), signature:dom.classList.contains('signature'),
     typo:/^[0-9a-z]{1,8}$/.test(dom.dataset.typo || '') ? dom.dataset.typo : null};
@@ -22,7 +22,7 @@ function blockAttrs(dom) {
 function blockDOM(node) {
   const a=node.attrs, out={};
   if(a.id)out.id=a.id;
-  const classes=[a.kind==='small'?'small':'',a.signature?'signature':''].filter(Boolean);
+  const classes=[a.kind==='small'||a.kind==='caption'?a.kind:'',a.signature?'signature':''].filter(Boolean);
   if(classes.length)out.class=classes.join(' ');
   if(a.kind==='paragraph')out['data-style']='paragraph';
   if(a.typo)out['data-typo']=a.typo;
@@ -50,6 +50,17 @@ export function imageDOM(node) {
   return ['img',{...(a.id?{id:a.id}:{}),src:a.src,alt:a.alt,class:figure?'figure-image':`book-image ${mode}`,
     'data-align':a.align,...(a.w&&a.h?{width:a.w,height:a.h}:{}),...(a.width?{style:`width:${a.width}%`}:{})}];
 }
+function figureAttrs(d) {
+  const square=d.classList.contains('wrap-left')||d.classList.contains('wrap-right');
+  const align=d.classList.contains('wrap-right')?'right':d.classList.contains('wrap-left')?'left':['left','right'].includes(d.dataset.align)?d.dataset.align:'center';
+  const width=parseFloat(square?d.style.width:d.style.getPropertyValue('--image-width'))||null;
+  return {id:d.id||null,mode:square?'square':'block',align,width};
+}
+function figureDOM(node) {
+  const a=node.attrs, square=a.mode==='square', side=a.align==='right'?'right':'left';
+  const style=a.width?(square?`width:${a.width}%`:`--image-width:${a.width}%`):null;
+  return ['figure',{class:`image-figure${square?` wrap-${side}`:''}`,...(a.id?{id:a.id}:{}),'data-align':square?side:a.align,...(style?{style}:{})},0];
+}
 export const schema = new Schema({
   nodes: {
     doc:{content:'block+'},
@@ -57,12 +68,15 @@ export const schema = new Schema({
     heading:{group:'block',content:'inline*',defining:true,attrs:{...attrs,level:{default:1}},
       parseDOM:[1,2,3].map(level=>({tag:`h${level}`,getAttrs:dom=>({...blockAttrs(dom),level})})),
       toDOM:n=>[`h${n.attrs.level}`,blockDOM(n),0]},
-    // Картинка с текстовой плашкой. Плашка позиционируется в процентах ширины блока
-    // (и по горизонтали, и по вертикали), поэтому композиция сохраняется при любой ширине окна.
-    // Блок — CSS-сетка из одной ячейки: картинка и плашка лежат в ней вместе, а ячейка растёт по содержимому.
-    figure:{group:'block',content:'figure_image overlay?',isolating:true,attrs:{id:{default:null}},
-      parseDOM:[{tag:'figure.image-figure',getAttrs:d=>({id:d.id||null})},{tag:'header.opening',getAttrs:d=>({id:d.id||null})}],
-      toDOM:n=>['figure',{class:'image-figure',...(n.attrs.id?{id:n.attrs.id}:{})},0]},
+    // Картинка-блок: картинка, необязательная плашка с текстом поверх и необязательная подпись под картинкой.
+    // Плашка позиционируется в процентах ширины блока (и по горизонтали, и по вертикали), поэтому композиция сохраняется при любой ширине окна.
+    // Блок — CSS-сетка: картинка и плашка лежат в одной ячейке, подпись — строкой ниже.
+    // Обтекание (mode/align/width) хранится на самом блоке: при «Вокруг рамки» обтекает весь блок вместе с подписью.
+    // width повторяет ширину картинки (синхронизирует плагин редактора).
+    figure:{group:'block',content:'figure_image overlay? figcaption?',isolating:true,
+      attrs:{id:{default:null},mode:{default:'block'},align:{default:'center'},width:{default:null}},
+      parseDOM:[{tag:'figure.image-figure',getAttrs:figureAttrs},{tag:'header.opening',getAttrs:d=>({id:d.id||null})}],
+      toDOM:figureDOM},
     figure_image:{atom:true,draggable:false,attrs:imageDefaults,
       parseDOM:[{tag:'img',context:'figure/',priority:70,getAttrs:d=>{
         const a=imageAttrs(d);if(!a)return false;
@@ -72,6 +86,9 @@ export const schema = new Schema({
       parseDOM:[{tag:'.image-overlay',context:'figure/',getAttrs:d=>({id:d.id||null,x:percent(d.style.marginLeft)??50,y:percent(d.style.marginTop)??40,width:percent(d.style.width)??45})},
         {tag:'.opening-titles',context:'figure/',getAttrs:d=>({id:d.id||null,x:45,y:52,width:55})}],
       toDOM:n=>['div',{class:'image-overlay',...(n.attrs.id?{id:n.attrs.id}:{}),style:`margin-left:${n.attrs.x}%;margin-top:${n.attrs.y}%;width:${n.attrs.width}%`},0]},
+    figcaption:{content:'(paragraph | heading)+',defining:true,isolating:true,attrs:{id:{default:null}},
+      parseDOM:[{tag:'figcaption',context:'figure/',getAttrs:d=>({id:d.id||null})}],
+      toDOM:n=>['figcaption',{class:'image-caption',...(n.attrs.id?{id:n.attrs.id}:{})},0]},
     image:{inline:true,group:'inline',atom:true,draggable:true,attrs:imageDefaults,parseDOM:[{tag:'img',getAttrs:imageAttrs}],toDOM:imageDOM},
     rule:{group:'block',atom:true,attrs:{kind:{default:'short'},id:{default:null}},parseDOM:[{tag:'hr',getAttrs:d=>({kind:d.classList.contains('divider-long')?'long':'short',id:d.id||null})}],toDOM:n=>['hr',{class:`divider-${n.attrs.kind}`,...(n.attrs.id?{id:n.attrs.id}:{})}]},
     blockquote:{group:'block',content:'block+',defining:true,parseDOM:[{tag:'blockquote'}],toDOM:()=>['blockquote',0]},

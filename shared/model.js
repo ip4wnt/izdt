@@ -29,7 +29,7 @@ export function sectionFor(root, blockId) {
 }
 
 // Именованные стили книги: базовые значения повторяют style.css, поверх них лежат правки редактора из styles.json.
-export const STYLE_KEYS = ['p','h1','h2','h3','small','paragraph'];
+export const STYLE_KEYS = ['p','h1','h2','h3','small','paragraph','caption'];
 export const STYLE_FAMILIES = ['TT Marxiana','Akzidenz-Grotesk Pro','Georgia','Arial'];
 export const STYLE_ALIGNS = ['left','center','justify','right'];
 export const BASE_STYLES = {
@@ -38,7 +38,8 @@ export const BASE_STYLES = {
   h2: {family:'TT Marxiana', size:2.46, leading:3.7638, indent:0, align:'center'},
   h3: {family:'TT Marxiana', size:2.7675, leading:4.2343, indent:0, align:'center'},
   small: {family:'TT Marxiana', size:1.7425, leading:1.7425, indent:3.075, align:'left'},
-  paragraph: {family:'TT Marxiana', size:2.05, leading:2.1525, indent:3.075, align:'left'}
+  paragraph: {family:'TT Marxiana', size:2.05, leading:2.1525, indent:3.075, align:'left'},
+  caption: {family:'TT Marxiana', size:1.7425, leading:2.05, indent:0, align:'center'}
 };
 const STYLE_RANGES = {size:[.5,8], leading:[.5,16], indent:[0,10]};
 /** Отбрасывает всё лишнее; возвращает только допустимые правки. */
@@ -63,7 +64,8 @@ export function sanitizeStyles(input) {
 export const mergeStyles = overrides => Object.fromEntries(STYLE_KEYS.map(key => [key, {...BASE_STYLES[key], ...(overrides?.[key] || {})}]));
 const FAMILY_CSS = {'TT Marxiana':'var(--serif)','Akzidenz-Grotesk Pro':'var(--sans)',Georgia:'Georgia,serif',Arial:'Arial,sans-serif'};
 const SELECTORS = {
-  p:'.book p:not(.small):not(.signature):not([data-style=paragraph])', small:'.book p.small:not(.signature)', paragraph:'.book p[data-style=paragraph]',
+  p:'.book p:not(.small):not(.caption):not(.signature):not([data-style=paragraph])', small:'.book p.small:not(.signature)', paragraph:'.book p[data-style=paragraph]',
+  caption:'.book p.caption',
   h1:'.book h1', h2:'.book h2', h3:'.book h3'
 };
 /** CSS только для изменённых стилей; подписи и прямое форматирование абзацев остаются сильнее. */

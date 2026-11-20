@@ -276,8 +276,12 @@ try{
   await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:path.join(output,'figure-overlay-editing.png')});
   await page.locator('#detach-overlay').click();
   assert.equal(await page.locator('.image-overlay').count(),0);
-  assert.equal(await page.locator('figure.image-figure + h1#part-one, figure.image-figure ~ #part-one').count(),1);
-  await page.locator('.figure-image').click();await page.waitForFunction(()=>!document.querySelector('#figure-text').hidden);
+  // Блок без плашки и подписи сразу становится обычной картинкой: обтекание снова доступно.
+  assert.equal(await page.locator('figure.image-figure').count(),0);
+  assert.equal(await page.locator('#book h1#part-one').count(),1);
+  await page.locator('.image-shell:not(.figure-image)').first().click();await page.waitForFunction(()=>!document.querySelector('#figure-text').hidden);
+  assert.equal(await page.locator('#image-wrap').isDisabled(),false);
+  assert.equal(await page.locator('#image-selection-label').textContent(),'Изображение');
   await page.locator('#figure-text').click();await page.keyboard.type('Новая надпись');
   assert.ok((await page.locator('.image-overlay').textContent()).includes('Новая надпись'));
   await page.locator('[data-command=undo]').click();await page.locator('[data-command=undo]').click();await page.locator('[data-command=undo]').click();
@@ -298,6 +302,61 @@ try{
   await assertOpening();
   await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
   pass('figure overlay: numeric position, drag, resize, detach, add text, convert inline image, delete keeps text; reader shows it');
+  // Подпись под картинкой: обтекание блока целиком, подпись под картинкой, снятие подписи возвращает обычную картинку.
+  {
+    const picture=page.locator('.image-shell:not(.figure-image)').first();await picture.scrollIntoViewIfNeeded();await picture.click();
+    await page.waitForFunction(()=>!document.querySelector('#figure-caption').hidden);
+    await page.locator('#image-wrap').selectOption('square');await page.locator('#image-align').selectOption('left');await number('image-width',40);
+    await page.locator('.image-shell:not(.figure-image)').first().click();
+    await page.locator('#figure-caption').click();await page.keyboard.type('Рис. 28. Пчелы, собирающие воду на бережках лужиц.');
+    const fig=page.locator('figure.image-figure.wrap-left');
+    assert.equal(await fig.count(),1);
+    assert.equal((await fig.locator('figcaption p.caption').textContent()).replace(/\u00a0/g,' '),'Рис. 28. Пчелы, собирающие воду на бережках лужиц.');
+    const geo=await fig.evaluate(el=>{const r=el.getBoundingClientRect(),img=el.querySelector('.figure-image').getBoundingClientRect(),cap=el.querySelector('figcaption').getBoundingClientRect(),col=el.parentElement.getBoundingClientRect();
+      return {float:getComputedStyle(el).float,width:r.width/col.width,img:img.width/r.width,capBelow:cap.top>=img.bottom-1,capWidth:Math.abs(cap.width-img.width),align:getComputedStyle(el.querySelector('p.caption')).textAlign};});
+    assert.equal(geo.float,'left');assert.ok(Math.abs(geo.width-.4)<.02,JSON.stringify(geo));assert.ok(geo.img>.98&&geo.capBelow&&geo.capWidth<2&&geo.align==='center',JSON.stringify(geo));
+    assert.equal(await page.locator('#text-style').inputValue(),'caption');
+    await fig.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'figure-caption-editing.png')});
+    // Ширина картинки меняет и блок с подписью.
+    await fig.locator('.figure-image').click();await page.waitForFunction(()=>document.querySelector('#figure-caption').getAttribute('aria-pressed')==='true');
+    assert.equal(await page.locator('#image-selection-label').textContent(),'Картинка с подписью');
+    await number('image-width',50);
+    assert.equal(await fig.evaluate(el=>el.style.width),'50%');
+    // «Сверху и снизу»: подпись по ширине картинки и по ее положению.
+    await fig.locator('.figure-image').click();await page.locator('#image-wrap').selectOption('block');await page.locator('#image-align').selectOption('center');
+    const block=page.locator('figure.image-figure').filter({has:page.locator('figcaption')});
+    const geo2=await block.evaluate(el=>{const img=el.querySelector('.figure-image').getBoundingClientRect(),cap=el.querySelector('figcaption').getBoundingClientRect();return {float:getComputedStyle(el).float,dx:Math.abs(cap.left-img.left),dw:Math.abs(cap.width-img.width)};});
+    assert.ok(geo2.float==='none'&&geo2.dx<2&&geo2.dw<2,JSON.stringify(geo2));
+    await page.locator('#image-wrap').selectOption('square');await page.locator('#image-align').selectOption('right');
+    assert.equal(await page.locator('figure.image-figure.wrap-right figcaption').count(),1);
+    // Сохранение и читалка.
+    await saved();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+    const reader=page.locator('#book figure.image-figure.wrap-right');
+    assert.equal((await reader.locator('figcaption p.caption').textContent()).replace(/\u00a0/g,' '),'Рис. 28. Пчелы, собирающие воду на бережках лужиц.');
+    assert.equal(await reader.evaluate(el=>getComputedStyle(el).float),'right');
+    await reader.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'figure-caption-reader.png')});
+    await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
+    // Backspace в пустой подписи убирает ее, картинка остается с тем же обтеканием.
+    const edit=page.locator('#book figure.image-figure.wrap-right');
+    await edit.locator('.figure-image').click();await page.locator('#figure-caption').click();
+    assert.equal(await page.locator('figure.image-figure.wrap-right').count(),0);
+    assert.ok(await page.locator('#book p').filter({hasText:/Рис\.\s28\.\sПчелы/}).count());
+    assert.equal(await page.locator('.image-shell.wrap-right:not(.figure-image)').count(),1);
+    await page.locator('.image-shell.wrap-right').click();await page.locator('#figure-caption').click();
+    assert.equal(await page.locator('figure.image-figure.wrap-right figcaption').count(),1);
+    await page.keyboard.press('Backspace');
+    assert.equal(await page.locator('figure.image-figure.wrap-right').count(),0);
+    assert.equal(await page.locator('.image-shell.wrap-right.ProseMirror-selectednode').count(),1);
+    // Картинка с текстом и подписью одновременно; снятие текста оставляет подпись.
+    await page.locator('#figure-caption').click();await page.keyboard.type('Подпись');
+    await page.locator('figure.image-figure.wrap-right .figure-image').click();await page.locator('#figure-text').click();await page.keyboard.type('Надпись');
+    assert.equal(await page.locator('figure.image-figure.wrap-right > .image-overlay + figcaption').count(),1);
+    await page.locator('#detach-overlay').click();
+    assert.equal(await page.locator('figure.image-figure.wrap-right figcaption').count(),1);
+    assert.equal(await page.locator('figure.image-figure.wrap-right .image-overlay').count(),0);
+    await saved();
+    pass('figure caption: wrap with caption, width, block alignment, reader, remove caption by button and Backspace, caption plus overlay');
+  }
   await clickText('garden');await page.keyboard.press('Control+End');await page.keyboard.press('Enter');await page.keyboard.type('Новая строка');
   await page.selectOption('#text-style','h3');
   assert.ok(await page.locator('#book h3').filter({hasText:'Новая строка'}).count());

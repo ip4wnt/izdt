@@ -26,7 +26,7 @@ export function pageHTML(book, base='') {
 <button data-command="redo" title="Повторить (Ctrl+Y)" aria-label="Повторить">${icon('redo-2')}</button></div>
 <div id="text-tools" class="text-tools">
 <div class="ribbon-group style-controls">
-<select id="text-style" title="Стиль абзаца" aria-label="Стиль текста"><option value="" disabled>Разные стили</option><option value="p">Обычный текст</option><option value="h1">Заголовок 1</option><option value="h2">Заголовок 2</option><option value="h3">Заголовок 3</option><option value="paragraph">Параграф оглавления</option><option value="small">Малый текст</option></select>
+<select id="text-style" title="Стиль абзаца" aria-label="Стиль текста"><option value="" disabled>Разные стили</option><option value="p">Обычный текст</option><option value="h1">Заголовок 1</option><option value="h2">Заголовок 2</option><option value="h3">Заголовок 3</option><option value="paragraph">Параграф оглавления</option><option value="small">Малый текст</option><option value="caption">Подпись к рисунку</option></select>
 <button id="style-settings" title="Настроить выбранный стиль: шрифт, размер, интерлиньяж, красную строку и выравнивание для всех абзацев этого стиля" aria-label="Настроить стиль" aria-expanded="false">${icon('sliders-horizontal')}</button>
 <select id="font-family" title="Шрифт" aria-label="Шрифт"><option value="" disabled>Разные шрифты</option><option>TT Marxiana</option><option>Akzidenz-Grotesk Pro</option><option>Georgia</option><option>Arial</option></select>
 <input id="font-size" title="Размер шрифта, rem" aria-label="Размер шрифта" type="number" min=".5" max="8" step=".05"></div>
@@ -55,6 +55,7 @@ export function pageHTML(book, base='') {
 <input id="image-alt" class="image-alt" title="Описание изображения" aria-label="Описание изображения" type="text" maxlength="500" placeholder="Описание" disabled></div>
 <div class="ribbon-group">
 <button id="figure-text" title="Положить текст поверх картинки: плашку можно перетаскивать и менять по ширине" hidden>Текст на картинке</button>
+<button id="figure-caption" title="Подпись под картинкой: при обтекании переносится вместе с картинкой" aria-pressed="false" hidden>Подпись</button>
 <button id="delete-image" title="Удалить выбранное изображение" aria-label="Удалить изображение" disabled>${icon('x')}</button></div>
 </div>
 </div>
@@ -69,7 +70,7 @@ export function pageHTML(book, base='') {
 </div>
 <div id="style-editor" class="ribbon-row style-editor" hidden role="group" aria-label="Настройка стиля">
 <span class="overlay-label">Настройка стиля</span>
-<select id="style-target" title="Какой стиль настраиваем" aria-label="Настраиваемый стиль"><option value="p">Обычный текст</option><option value="h1">Заголовок 1</option><option value="h2">Заголовок 2</option><option value="h3">Заголовок 3</option><option value="paragraph">Параграф оглавления</option><option value="small">Малый текст</option></select>
+<select id="style-target" title="Какой стиль настраиваем" aria-label="Настраиваемый стиль"><option value="p">Обычный текст</option><option value="h1">Заголовок 1</option><option value="h2">Заголовок 2</option><option value="h3">Заголовок 3</option><option value="paragraph">Параграф оглавления</option><option value="small">Малый текст</option><option value="caption">Подпись к рисунку</option></select>
 <select id="style-family" title="Шрифт стиля" aria-label="Шрифт стиля"><option>TT Marxiana</option><option>Akzidenz-Grotesk Pro</option><option>Georgia</option><option>Arial</option></select>
 <label class="icon-field" title="Размер, rem"><span class="field-icon" aria-hidden="true">A</span><input id="style-size" aria-label="Размер стиля" type="number" min=".5" max="8" step=".05"></label>
 <label class="icon-field" title="Интерлиньяж, rem"><span class="field-icon" aria-hidden="true">↕</span><input id="style-leading" aria-label="Интерлиньяж стиля" type="number" min=".5" max="16" step=".05"></label>

@@ -45,7 +45,7 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .book p{overflow-wrap:break-word;text-wrap:pretty}
 /* Переносы по словарю (lang="ru"): слово от 6 букв, не короче 3 букв по краям, не больше двух переносов подряд, последняя строка абзаца без переноса */
 .book p{hyphens:auto;-webkit-hyphens:auto;hyphenate-limit-chars:6 3 3;hyphenate-limit-lines:2;hyphenate-limit-last:always}
-.book h1,.book h2,.book h3,.book .image-overlay p,.book .signature,.book [data-style=paragraph]{hyphens:manual;-webkit-hyphens:manual}
+.book h1,.book h2,.book h3,.book .image-overlay p,.book .image-caption p,.book .signature,.book [data-style=paragraph]{hyphens:manual;-webkit-hyphens:manual}
 .book :is(p,h1,h2,h3):empty::before{content:"\200B"}
 .book [data-style=paragraph]{font-style:italic}
 .book .small{font-size:1.7425rem;line-height:1.7425rem}
@@ -58,9 +58,19 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 /* Картинка с текстом: одна ячейка сетки, картинка и плашка лежат в ней вместе; проценты плашки считаются от ширины блока */
 .book .image-figure{display:grid;grid-template-columns:100%;margin:0 0 2rem;clear:both;position:relative}
 .book .image-figure>img,.book .image-figure>.image-shell.figure-image{grid-area:1/1;display:block;width:100%;max-width:100%;height:auto;justify-self:start;margin:0;float:none;mix-blend-mode:multiply}
-.book .image-figure>[data-align=center]{justify-self:center}
-.book .image-figure>[data-align=right]{justify-self:end}
+.book .image-figure>.figure-image[data-align=center]{justify-self:center}
+.book .image-figure>.figure-image[data-align=right]{justify-self:end}
 [data-theme=dark] .book .image-figure>img,[data-theme=dark] .book .image-figure>.image-shell.figure-image{filter:invert(.87);mix-blend-mode:screen}
+/* Подпись под картинкой: вторая строка сетки, ширина и положение как у картинки (--image-width ставит редактор). */
+.book .image-figure>.image-caption{grid-area:2/1;width:var(--image-width,100%);max-width:100%;justify-self:start;margin:.8rem 0 0;box-sizing:border-box}
+.book .image-figure[data-align=center]>.image-caption{justify-self:center}
+.book .image-figure[data-align=right]>.image-caption{justify-self:end}
+.book p.caption{font-size:1.7425rem;line-height:2.05rem;text-indent:0;text-align:center}
+.editing .image-caption{outline:1px dashed #a69b79;outline-offset:.3rem}
+/* Картинка-блок с обтеканием: обтекает весь блок вместе с плашкой и подписью, картинка заполняет блок. */
+.book .image-figure.wrap-left,.book .image-figure.wrap-right{clear:none;margin-bottom:1rem}
+.book .image-figure.wrap-left>.figure-image,.book .image-figure.wrap-right>.figure-image{width:100%!important;justify-self:stretch}
+.book .image-figure.wrap-left>.image-caption,.book .image-figure.wrap-right>.image-caption{width:100%}
 .book .image-overlay{grid-area:1/1;align-self:start;justify-self:start;min-width:0;text-align:center;position:relative;z-index:1;box-sizing:border-box}
 .book .image-overlay p{text-indent:0}
 .editing .image-overlay{outline:1px dashed #a69b79;outline-offset:.4rem}

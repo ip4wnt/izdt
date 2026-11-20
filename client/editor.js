@@ -13,6 +13,45 @@ const $=id=>document.getElementById(id);
 const uid=()=>`b-${crypto.randomUUID()}`;
 const imageTypes=new Set(['image','figure_image']);
 const controlIds=['text-style','font-family','font-size','line-height','text-indent','text-align'];
+const clampRound=(v,min,max)=>Math.round(Math.min(max,Math.max(min,v)));
+/** Блок без плашки и подписи снова становится обычной картинкой с тем же обтеканием и шириной. Возвращает позицию картинки. */
+function unwrapBare(tr,figurePos) {
+  const node=tr.doc.nodeAt(figurePos);
+  if(!node||node.type!==schema.nodes.figure||node.childCount!==1)return null;
+  const image=node.firstChild, square=node.attrs.mode==='square';
+  const inline=schema.nodes.image.create({...image.attrs,mode:square?'square':'block',
+    align:square?(node.attrs.align==='right'?'right':'left'):image.attrs.align,width:image.attrs.width||100});
+  tr.replaceWith(figurePos,figurePos+node.nodeSize,schema.nodes.paragraph.create({id:uid()},inline));
+  return figurePos+1;
+}
+/** Пересчет плашки при смене обтекания: в «Сверху и снизу» проценты считаются от колонки, при обтекании — от самой картинки. */
+function convertOverlay(o,toSquare,width,align) {
+  const w=width||100, offset=align==='right'?100-w:align==='center'?(100-w)/2:0;
+  if(toSquare){const size=clampRound(o.width/w*100,10,100);return {...o,width:size,x:clampRound((o.x-offset)/w*100,0,100-size),y:clampRound(o.y/w*100,0,300)};}
+  const size=clampRound(o.width*w/100,10,100);return {...o,width:size,x:clampRound(offset+o.x*w/100,0,100-size),y:clampRound(o.y*w/100,0,300)};
+}
+/**
+ * Порядок в картинках-блоках после любой правки (кнопки, удаление текста, отмена):
+ * блок без плашки и подписи разворачивается в обычную картинку, ширина и положение блока повторяют картинку.
+ */
+const figures=new Plugin({
+  appendTransaction(transactions,old,state) {
+    if(!transactions.some(tr=>tr.docChanged))return null;
+    const found=[];
+    state.doc.descendants((node,pos)=>{if(node.type===schema.nodes.figure){found.push({node,pos});return false;}});
+    if(!found.length)return null;
+    const tr=state.tr;
+    for(const {node,pos} of found.reverse()) {
+      const image=node.firstChild;
+      if(!image||image.type!==schema.nodes.figure_image)continue;
+      if(node.childCount===1){unwrapBare(tr,pos);continue;}
+      const square=node.attrs.mode==='square';
+      const align=square&&image.attrs.align==='center'?'left':image.attrs.align, width=image.attrs.width||null;
+      if(node.attrs.align!==align||node.attrs.width!==width)tr.setNodeMarkup(pos,undefined,{...node.attrs,align,width});
+    }
+    return tr.docChanged?tr:null;
+  }
+});
 export function createEditor(state,book,panels) {
   let view=null, dirty=false, flight=null, timer=null, conflict=false, uploadCount=0, draftTimer=null;
   // Черновик в localStorage: несохранённый текст переживает закрытие вкладки, сбой сервера и подмену файла.
@@ -42,8 +81,13 @@ export function createEditor(state,book,panels) {
   }
   function figureOf(image) {
     if(!image||image.node.type.name!=='figure_image')return null;
-    const $pos=view.state.doc.resolve(image.pos);
-    return {node:$pos.parent,pos:$pos.before(),overlay:$pos.parent.childCount>1?$pos.parent.child(1):null};
+    const $pos=view.state.doc.resolve(image.pos), node=$pos.parent, pos=$pos.before();
+    const out={node,pos,overlay:null,caption:null};
+    node.forEach((child,offset)=>{
+      if(child.type===schema.nodes.overlay)out.overlay={node:child,pos:pos+1+offset};
+      if(child.type===schema.nodes.figcaption)out.caption={node:child,pos:pos+1+offset};
+    });
+    return out;
   }
   function captureNativeSelection() {
     const native=getSelection();
@@ -101,12 +145,15 @@ export function createEditor(state,book,panels) {
     $('image-tools').hidden=!image;$('text-tools').hidden=!!image;
     if(image&&!$('style-editor').hidden)closeStyleEditor();
     for(const id of ['image-wrap','image-align','image-width','image-alt','delete-image'])$(id).disabled=!image;
-    $('image-wrap').disabled=!image||!!figure;
+    $('image-wrap').querySelector('[value=inline]').disabled=!!figure;
     $('figure-text').hidden=!image||!!figure?.overlay;
-    $('image-selection-label').textContent=figure?'Картинка с текстом':image?'Изображение':'Выберите изображение';
-    setControl('image-wrap',image?.node.attrs.mode||'block');
+    $('figure-caption').hidden=!image;
+    $('figure-caption').setAttribute('aria-pressed',String(!!figure?.caption));
+    $('figure-caption').title=figure?.caption?'Убрать подпись: ее текст встанет под картинкой обычными абзацами':'Подпись под картинкой: при обтекании переносится вместе с картинкой';
+    $('image-selection-label').textContent=figure?(figure.overlay&&figure.caption?'Картинка с текстом и подписью':figure.overlay?'Картинка с текстом':'Картинка с подписью'):image?'Изображение':'Выберите изображение';
+    setControl('image-wrap',figure?figure.node.attrs.mode:image?.node.attrs.mode||'block');
     setControl('image-align',image?.node.attrs.align||'center');
-    setControl('image-width',image?.node.attrs.width||45);
+    setControl('image-width',image?.node.attrs.width||(figure?100:45));
     setControl('image-alt',image?.node.attrs.alt||'');
     $('overlay-tools').hidden=!overlay;
     if(overlay){setControl('overlay-x',overlay.node.attrs.x);setControl('overlay-y',overlay.node.attrs.y);setControl('overlay-width',overlay.node.attrs.width);}
@@ -189,9 +236,14 @@ export function createEditor(state,book,panels) {
     });
     handle.addEventListener('pointerdown',e=>{
       e.preventDefault();e.stopPropagation();handle.setPointerCapture(e.pointerId);
-      const start=e.clientX,width=dom.getBoundingClientRect().width,container=dom.parentElement.getBoundingClientRect().width;
+      // В картинке-блоке с обтеканием ширину задает сам блок, поэтому проценты считаются от колонки текста, а не от блока.
+      const box=current.type.name==='figure_image'?dom.parentElement:null, wrapped=!!box&&/\bwrap-(left|right)\b/.test(box.className);
+      const start=e.clientX,width=dom.getBoundingClientRect().width,container=(wrapped?box.parentElement:dom.parentElement).getBoundingClientRect().width;
       let percent=current.attrs.width||45;
-      const move=ev=>{percent=Math.min(100,Math.max(5,(width+ev.clientX-start)/container*100));dom.style.width=`${percent}%`;};
+      const move=ev=>{
+        percent=Math.min(100,Math.max(5,(width+ev.clientX-start)/container*100));dom.style.width=`${percent}%`;
+        if(wrapped)box.style.width=`${percent}%`;else if(box)box.style.setProperty('--image-width',`${percent}%`);
+      };
       const end=()=>{
         handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',end);handle.removeEventListener('pointercancel',cancel);
         const pos=getPos();if(typeof pos==='number'){
@@ -253,12 +305,13 @@ export function createEditor(state,book,panels) {
     state.editing=true;document.body.classList.add('editing');book.setAttribute('spellcheck','true');$('editor-toolbar').hidden=false;$('toggle-editor').classList.add('active');
     view=new EditorView({mount:book},{
       state:EditorState.create({schema,doc,plugins:[
-        history(),ids,typography,
+        history(),figures,ids,typography,
         keymap({'Mod-z':undo,'Shift-Mod-z':redo,'Mod-y':redo,
           'Mod-b':toggleMark(schema.marks.strong),'Mod-i':toggleMark(schema.marks.em),'Mod-u':toggleMark(schema.marks.underline),
           'Mod-Home':(s,d)=>{d(s.tr.setSelection(TextSelection.atStart(s.doc)).scrollIntoView());return true;},
           'Mod-End':(s,d)=>{d(s.tr.setSelection(TextSelection.atEnd(s.doc)).scrollIntoView());return true;},
-          'Shift-Enter':(s,d)=>{d(s.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());return true;}}),
+          'Shift-Enter':(s,d)=>{d(s.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());return true;},
+          'Backspace':removeEmptyFigurePart}),
         keymap(baseKeymap)
       ]}),
       dispatchTransaction:dispatch,
@@ -399,54 +452,119 @@ export function createEditor(state,book,panels) {
   };
   function changeImage(attributes) {
     const selected=selectedImage();if(!selected)return;
+    const figure=figureOf(selected);
     const next={...selected.node.attrs,...attributes};
-    if(next.mode==='square'&&next.align==='center')next.align='left';
+    if(!figure){
+      if(next.mode==='square'&&next.align==='center')next.align='left';
+      const tr=view.state.tr.setNodeMarkup(selected.pos,undefined,next);
+      finish(tr.setSelection(NodeSelection.create(tr.doc,selected.pos)));return;
+    }
+    // Картинка-блок: обтекание у блока целиком (вместе с плашкой и подписью), в строке с текстом он не встает.
+    const before=figure.node.attrs.mode, mode=attributes.mode?(attributes.mode==='square'?'square':'block'):before;
+    if(mode==='square'&&next.align==='center')next.align='left';
+    next.mode='block';
     const tr=view.state.tr.setNodeMarkup(selected.pos,undefined,next);
+    tr.setNodeMarkup(figure.pos,undefined,{...figure.node.attrs,mode,align:next.align,width:next.width||null});
+    if(figure.overlay&&mode!==before)
+      tr.setNodeMarkup(figure.overlay.pos,undefined,convertOverlay(figure.overlay.node.attrs,mode==='square',next.width,next.align));
     finish(tr.setSelection(NodeSelection.create(tr.doc,selected.pos)));
   }
   $('image-wrap').onchange=e=>changeImage({mode:e.target.value});
   $('image-align').onchange=e=>{
     const image=selectedImage();if(!image)return;
-    changeImage({align:e.target.value,...(image.node.attrs.mode==='square'&&e.target.value==='center'?{mode:'block'}:{})});
+    const mode=figureOf(image)?.node.attrs.mode||image.node.attrs.mode;
+    changeImage({align:e.target.value,...(mode==='square'&&e.target.value==='center'?{mode:'block'}:{})});
   };
   numberControl('image-width',5,100,v=>changeImage({width:v}));
   $('image-alt').onchange=e=>changeImage({alt:e.target.value});
+  // Абзацы плашки и подписи, которые остаются в книге обычным текстом (пустые не нужны).
+  const keepText=part=>{
+    const nodes=[];
+    part?.node.forEach(child=>{
+      if(!child.textContent.trim())return;
+      nodes.push(child.type===schema.nodes.paragraph&&child.attrs.kind==='caption'?child.type.create({...child.attrs,kind:'p'},child.content,child.marks):child);
+    });
+    return nodes;
+  };
   $('delete-image').onclick=()=>{
     const image=selectedImage();if(!image)return;
     const figure=figureOf(image);
     if(!figure){finish(view.state.tr.deleteSelection());return;}
-    // Картинка с текстом: текст плашки остаётся в книге обычными абзацами.
-    const nodes=[];figure.overlay?.forEach(child=>nodes.push(child));
+    // Картинка с текстом или подписью: текст остается в книге обычными абзацами.
+    const nodes=[...keepText(figure.overlay),...keepText(figure.caption)];
     const tr=view.state.tr.replaceWith(figure.pos,figure.pos+figure.node.nodeSize,nodes.length?nodes:schema.nodes.paragraph.create({id:uid()}));
     finish(tr.setSelection(TextSelection.near(tr.doc.resolve(figure.pos))));
   };
+  // Обычная картинка становится картинкой-блоком с теми же обтеканием, положением и шириной. Возвращает позицию блока.
+  function wrapImage(tr,image,parts) {
+    const $pos=tr.doc.resolve(image.pos), parent=$pos.parent, parentPos=$pos.before();
+    const a=image.node.attrs, square=a.mode==='square', width=a.width||45;
+    const align=square?(a.align==='right'?'right':'left'):a.align;
+    const node=schema.nodes.figure.create({id:uid(),mode:square?'square':'block',align,width},
+      [schema.nodes.figure_image.create({...a,id:a.id||uid(),width,align,mode:'block'}),...parts]);
+    if(parent.childCount===1){tr.replaceWith(parentPos,parentPos+parent.nodeSize,node);return parentPos;}
+    tr.delete(image.pos,image.pos+1);const after=tr.mapping.map(parentPos+parent.nodeSize);tr.insert(after,node);return after;
+  }
   // Текст на картинке: обычная картинка становится блоком «картинка + плашка»,
   // а у блока без плашки появляется пустая плашка.
   $('figure-text').onclick=()=>{
     const image=selectedImage();if(!image)return;
     const figure=figureOf(image);
-    const overlay=()=>schema.nodes.overlay.create({id:uid()},schema.nodes.paragraph.create({id:uid(),align:'center',indent:'0rem'}));
+    const overlay=schema.nodes.overlay.create({id:uid()},schema.nodes.paragraph.create({id:uid(),align:'center',indent:'0rem'}));
     let tr=view.state.tr, inside;
     if(figure){
       if(figure.overlay)return;
-      const target=figure.pos+figure.node.nodeSize-1;tr.insert(target,overlay());inside=target+2;
+      // Плашка встает сразу после картинки, перед подписью.
+      const target=figure.pos+1+figure.node.firstChild.nodeSize;tr.insert(target,overlay);inside=target+2;
     }else{
-      const $pos=view.state.doc.resolve(image.pos), parent=$pos.parent, parentPos=$pos.before();
-      const attrs={...image.node.attrs,id:uid(),width:image.node.attrs.width||45,mode:'block'};
-      const node=schema.nodes.figure.create({id:uid()},[schema.nodes.figure_image.create(attrs),overlay()]);
-      // Пустой абзац плашки лежит перед закрывающими границами плашки и блока: -3 от конца блока.
-      if(parent.childCount===1){tr.replaceWith(parentPos,parentPos+parent.nodeSize,node);inside=parentPos+node.nodeSize-3;}
-      else{tr.delete(image.pos,image.pos+1);const after=tr.mapping.map(parentPos+parent.nodeSize);tr.insert(after,node);inside=after+node.nodeSize-3;}
+      const pos=wrapImage(tr,image,[overlay]);
+      inside=pos+3+tr.doc.nodeAt(pos).firstChild.nodeSize; // вход в блок, картинка, вход в плашку и в абзац
     }
     finish(tr.setSelection(TextSelection.create(tr.doc,inside)).scrollIntoView());
   };
+  // Подпись под картинкой: включается и выключается одной кнопкой.
+  $('figure-caption').onclick=()=>{
+    const image=selectedImage();if(!image)return;
+    const figure=figureOf(image);
+    let tr=view.state.tr;
+    if(figure?.caption){
+      const nodes=keepText(figure.caption);
+      tr.delete(figure.caption.pos,figure.caption.pos+figure.caption.node.nodeSize);
+      const unwrapped=unwrapBare(tr,figure.pos);
+      const imagePos=unwrapped??image.pos;
+      if(nodes.length)tr.insert(tr.doc.resolve(imagePos).after(),nodes);
+      finish(tr.setSelection(NodeSelection.create(tr.doc,imagePos)));return;
+    }
+    const caption=schema.nodes.figcaption.create({id:uid()},schema.nodes.paragraph.create({id:uid(),kind:'caption'}));
+    let inside;
+    if(figure){const target=figure.pos+figure.node.nodeSize-1;tr.insert(target,caption);inside=target+2;}
+    else{const pos=wrapImage(tr,image,[caption]);inside=pos+tr.doc.nodeAt(pos).nodeSize-3;}
+    finish(tr.setSelection(TextSelection.create(tr.doc,inside)).scrollIntoView());
+  };
+  // Backspace в пустой плашке или пустой подписи убирает ее; блок без них снова становится обычной картинкой.
+  function removeEmptyFigurePart(state,dispatch) {
+    const {$from,empty}=state.selection;
+    if(!empty||$from.depth<3||$from.parent.content.size)return false;
+    const part=$from.node($from.depth-1);
+    if(part.type!==schema.nodes.overlay&&part.type!==schema.nodes.figcaption||part.childCount!==1)return false;
+    if(dispatch){
+      const partPos=$from.before($from.depth-1), figurePos=$from.before($from.depth-2);
+      const tr=state.tr.delete(partPos,partPos+part.nodeSize);
+      const imagePos=unwrapBare(tr,figurePos)??figurePos+1;
+      dispatch(closeHistory(tr.setSelection(NodeSelection.create(tr.doc,imagePos))).scrollIntoView());
+    }
+    return true;
+  }
   $('detach-overlay').onclick=()=>{
     const overlay=overlayAt();if(!overlay)return;
-    const nodes=[];overlay.node.forEach(child=>nodes.push(child));
+    const nodes=keepText({node:overlay.node});
     const tr=view.state.tr.delete(overlay.pos,overlay.pos+overlay.node.nodeSize);
-    const after=tr.mapping.map(overlay.figurePos+overlay.figure.nodeSize);
-    tr.insert(after,nodes);
-    finish(tr.setSelection(TextSelection.near(tr.doc.resolve(after+1))));
+    // Блок без подписи сразу становится обычной картинкой: снова доступно любое обтекание.
+    const unwrapped=unwrapBare(tr,overlay.figurePos);
+    const imagePos=unwrapped??overlay.figurePos+1;
+    const after=unwrapped!=null?tr.doc.resolve(unwrapped).after():overlay.figurePos+tr.doc.nodeAt(overlay.figurePos).nodeSize;
+    if(nodes.length){tr.insert(after,nodes);finish(tr.setSelection(TextSelection.near(tr.doc.resolve(after+1))));}
+    else finish(tr.setSelection(NodeSelection.create(tr.doc,imagePos)));
   };
   function overlayAttribute(name,value) {
     const overlay=overlayAt();if(!overlay)return;
