@@ -33,9 +33,10 @@ export function pageHTML(book, base='') {
 <label class="icon-field" title="Разрядка (межбуквенное расстояние), em. 0 — обычная. В оглавлении не отображается"><span class="field-icon" aria-hidden="true">A↔</span><input id="letter-spacing" aria-label="Разрядка" type="number" min="0" max="1" step=".05"></label></div>
 <div class="ribbon-group inline-controls">
 <button data-command="bold" title="Полужирный (Ctrl+B)" aria-label="Полужирный" aria-pressed="false"><b>B</b></button>
-<button data-command="italic" title="Курсив (Ctrl+I)" aria-label="Курсив" aria-pressed="false"><i>I</i></button>
+<button data-command="italic" title="Курсив (Ctrl+I). Если курсив задан стилем, снимает его только в выделенном месте" aria-label="Курсив" aria-pressed="false"><i>I</i></button>
 <button data-command="underline" title="Подчёркивание (Ctrl+U)" aria-label="Подчёркивание" aria-pressed="false"><u>U</u></button>
 <button data-command="strikeThrough" title="Зачёркивание" aria-label="Зачёркивание" aria-pressed="false"><s>S</s></button>
+<button data-command="caps" title="Прописные буквы: включить или снять в выделенном месте (у заголовков 1–2 снимает прописные стиля только здесь)" aria-label="Прописные" aria-pressed="false">АА</button>
 <button id="clear-format" title="Убрать ручное форматирование, сохранив стиль" aria-label="Сбросить форматирование">T×</button></div>
 <div class="ribbon-group paragraph-controls">
 <select id="text-align" title="Выравнивание абзаца" aria-label="Выравнивание текста"><option value="" disabled>Разное</option><option value="left">По левому краю</option><option value="center">По центру</option><option value="justify">По ширине</option><option value="right">По правому краю</option></select>

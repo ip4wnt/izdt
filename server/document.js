@@ -18,7 +18,7 @@ export function normalize(html) {
     allowedStyles: {'*':{
       'font-size':rem, 'line-height':[/^\d(?:\.\d{1,4})?$/, ...rem],
       'text-indent':rem, 'font-family':[/^["']?(?:TT Marxiana|Old Standard TT|Akzidenz-Grotesk Pro|Roboto Condensed|Georgia|Arial|serif|sans-serif)["']?$/],
-      'text-align':[/^(left|right|center|justify)$/], 'font-style':[/^(normal|italic)$/],
+      'text-align':[/^(left|right|center|justify)$/], 'font-style':[/^(normal|italic)$/], 'text-transform':[/^(none|uppercase)$/],
       'font-weight':[/^(normal|bold|400|700)$/], 'letter-spacing':[/^(?:0|0?\.\d{1,3}|1(?:\.0{1,3})?)em$/], 'width':[/^(?:[1-9]\d?(?:\.\d{1,2})?|100)%$/],
       'margin-left':[/^(?:\d{1,2}|100)%$/], 'margin-top':[/^(?:\d{1,2}|[12]\d{2}|300)%$/],
       '--image-width':[/^(?:[1-9]\d?(?:\.\d{1,2})?|100)%$/]

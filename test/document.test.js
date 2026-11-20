@@ -27,6 +27,10 @@ test('letter spacing survives sanitizer but TOC title stays plain text',()=>{
   assert.match(html,/letter-spacing:0\.2em/);assert.doesNotMatch(html,/5em/);
   assert.equal(makeTOC(root)[0].title,'Глава');
 });
+test('local style overrides (upright, capitals) survive sanitizer',()=>{
+  const {html}=normalize('<p><span style="font-style:normal">a</span><span style="text-transform:none">b</span><span style="text-transform:capitalize">c</span></p>');
+  assert.match(html,/font-style:normal/);assert.match(html,/text-transform:none/);assert.doesNotMatch(html,/capitalize/);
+});
 test('highlight spans inline formatting, supports overlaps, retains text',()=>{
   const html='<p id="a">Hello <em>beautiful</em> world.</p>';
   const result=annotate(html,[{id:'n1',blockId:'a',start:3,quote:'lo beautiful w'},{id:'n2',blockId:'a',start:6,quote:'beautiful'}]);

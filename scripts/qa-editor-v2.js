@@ -659,6 +659,46 @@ try{
     await saved();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
     pass('plain TOC paragraph has no number and keeps numbering; letter spacing is saved and TOC stays plain');
   }
+  // Точечная отмена курсива и прописных, заданных стилем: глобальный стиль не меняется.
+  {
+    await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
+    const italic=page.locator('[data-command=italic]'),caps=page.locator('[data-command=caps]');
+    await selectText('distribution',10);
+    assert.equal(await italic.getAttribute('aria-pressed'),'true');
+    await italic.click();
+    await page.waitForFunction(()=>[...document.querySelectorAll('#distribution-title span')].some(s=>s.style.fontStyle==='normal'&&getComputedStyle(s).fontStyle==='normal'));
+    assert.equal(await italic.getAttribute('aria-pressed'),'false');
+    assert.equal(await page.locator('#benefits-title').evaluate(el=>getComputedStyle(el).fontStyle),'italic','other paragraphs keep the style italic');
+    await clickText('general');await page.keyboard.press('Home');
+    await page.keyboard.down('Shift');for(let i=0;i<5;i++)await page.keyboard.press('ArrowRight');await page.keyboard.up('Shift');
+    assert.equal(await caps.getAttribute('aria-pressed'),'true');
+    await caps.click();
+    await page.waitForFunction(()=>[...document.querySelectorAll('#general span')].some(s=>getComputedStyle(s).textTransform==='none'));
+    assert.equal(await caps.getAttribute('aria-pressed'),'false');
+    // В обычном абзаце кнопка по-прежнему ставит обычный курсив.
+    await selectText('apiaries',8);await italic.click();
+    await page.waitForFunction(()=>document.querySelector('#apiaries em'));
+    await saved();
+    const html=(await page.evaluate(async()=>(await (await fetch('/api/book')).json()))).html;
+    assert.match(html,/font-style:normal/);assert.match(html,/text-transform:none/);
+    const styles=await page.evaluate(async()=>(await (await fetch('/api/book')).json()).styles);
+    assert.ok(!styles?.paragraph,'global paragraph style untouched');
+    await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+    await page.waitForFunction(()=>[...document.querySelectorAll('#book #distribution-title span')].some(s=>getComputedStyle(s).fontStyle==='normal')&&[...document.querySelectorAll('#book #general span')].some(s=>getComputedStyle(s).textTransform==='none'));
+    await page.waitForTimeout(500);await page.evaluate(()=>document.querySelector('#book #distribution').scrollIntoView({block:'start'}));await page.waitForTimeout(300);
+    await page.screenshot({path:path.join(output,'preset-override.png')});
+    // Повторное нажатие возвращает стиль; откат правок.
+    await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
+    await selectText('distribution',10);await italic.click();
+    await page.waitForFunction(()=>![...document.querySelectorAll('#distribution-title span')].some(s=>s.style.fontStyle));
+    assert.equal(await italic.getAttribute('aria-pressed'),'true');
+    await clickText('general');await page.keyboard.press('Home');
+    await page.keyboard.down('Shift');for(let i=0;i<5;i++)await page.keyboard.press('ArrowRight');await page.keyboard.up('Shift');
+    await caps.click();await page.waitForFunction(()=>![...document.querySelectorAll('#general span')].some(s=>s.style.textTransform));
+    await selectText('apiaries',8);await italic.click();await page.waitForFunction(()=>!document.querySelector('#apiaries em'));
+    await saved();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+    pass('style italic and capitals can be removed and restored locally without touching the global style');
+  }
   assert.deepEqual(errors,[]);pass('no uncaught browser errors');
   await writeFile(path.join(output,'results.json'),JSON.stringify({checks,errors,serverLogs:logs},null,2));
 }catch(e){

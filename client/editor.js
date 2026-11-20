@@ -1,10 +1,10 @@
 import {EditorState, Plugin, TextSelection, NodeSelection} from 'prosemirror-state';
 import {EditorView} from 'prosemirror-view';
-import {DOMSerializer} from 'prosemirror-model';
+import {DOMSerializer, Fragment, Slice} from 'prosemirror-model';
 import {baseKeymap, toggleMark} from 'prosemirror-commands';
 import {history, undo, redo, closeHistory} from 'prosemirror-history';
 import {keymap} from 'prosemirror-keymap';
-import {schema, parseDocument, serializeDocument, DEFAULTS, applyStyles, styleName, imageDOM} from './schema.js';
+import {schema, parseDocument, serializeDocument, DEFAULTS, applyStyles, styleName, imageDOM, presetItalic, presetCaps} from './schema.js';
 import {STYLE_KEYS, stylesCSS} from '../shared/model.js';
 import {api, applyAssetURLs, notify, base, storage} from '../public/js/api.js';
 import {makeTOC} from '../shared/model.js';
@@ -16,6 +16,47 @@ const imageTypes=new Set(['image','figure_image']);
 const controlIds=['text-style','font-family','font-size','letter-spacing','line-height','text-indent','text-align'];
 const clampRound=(v,min,max)=>Math.round(Math.min(max,Math.max(min,v)));
 /** Блок без плашки и подписи снова становится обычной картинкой с тем же обтеканием и шириной. Возвращает позицию картинки. */
+/**
+ * Переключатель свойства, которое может прийти из стиля. Если текст уже курсивный/прописной (своей меткой или стилем),
+ * свойство снимается точечно (для стиля ставится метка-отмена); иначе включается. Глобальный стиль не меняется.
+ */
+function presetToggle(on,off,preset){
+  const shows=(block,marks)=>marks.some(m=>m.type===on)||(preset(block,marks)&&!marks.some(m=>m.type===off));
+  const command=(state,dispatch)=>{
+    const {from,to,empty,$from}=state.selection;
+    if(empty){
+      if(!$from.parent.isTextblock)return false;
+      const marks=state.storedMarks||$from.marks(), active=shows($from.parent,marks);
+      let set=marks.filter(m=>m.type!==on&&m.type!==off);
+      if(active&&preset($from.parent,marks))set=off.create().addToSet(set);
+      if(!active&&!preset($from.parent,marks))set=on.create().addToSet(set);
+      if(dispatch)dispatch(state.tr.setStoredMarks(set));
+      return true;
+    }
+    const runs=[];
+    state.doc.nodesBetween(from,to,(node,pos,parent)=>{if(node.isText)runs.push({a:Math.max(from,pos),b:Math.min(to,pos+node.nodeSize),parent,marks:node.marks});});
+    if(!runs.length)return false;
+    const active=runs.filter(r=>r.parent.textContent.trim()).every(r=>shows(r.parent,r.marks));
+    const tr=state.tr;
+    for(const r of runs){
+      tr.removeMark(r.a,r.b,on).removeMark(r.a,r.b,off);
+      const fromStyle=preset(r.parent,r.marks);
+      if(active&&fromStyle)tr.addMark(r.a,r.b,off.create());
+      if(!active&&!fromStyle)tr.addMark(r.a,r.b,on.create());
+    }
+    if(dispatch)dispatch(tr);
+    return true;
+  };
+  command.shows=shows;
+  return command;
+}
+function stripPresetMarks(fragment){
+  const out=[];
+  fragment.forEach(node=>out.push(node.isText?node.mark(node.marks.filter(m=>m.type!==schema.marks.upright&&m.type!==schema.marks.no_caps)):node.copy(stripPresetMarks(node.content))));
+  return Fragment.fromArray(out);
+}
+const toggleItalic=presetToggle(schema.marks.em,schema.marks.upright,presetItalic);
+const toggleCaps=presetToggle(schema.marks.caps,schema.marks.no_caps,presetCaps);
 function unwrapBare(tr,figurePos) {
   const node=tr.doc.nodeAt(figurePos);
   if(!node||node.type!==schema.nodes.figure||node.childCount!==1)return null;
@@ -184,8 +225,9 @@ export function createEditor(state,book,panels) {
     })));
     setControl('text-indent',common(blocks.map(({node})=>parseFloat(node.attrs.indent??DEFAULTS[styleName(node)]?.indent??3.075))));
     setControl('text-align',common(blocks.map(({node})=>node.attrs.align||(node.attrs.signature?'right':DEFAULTS[styleName(node)]?.align)||'left')));
-    for(const [command,mark] of Object.entries({bold:'strong',italic:'em',underline:'underline',strikeThrough:'strike'})){
-      const active=runs.length&&runs.every(r=>r.marks.some(m=>m.type===schema.marks[mark])||(mark==='em'&&(/^paragraph/.test(styleName(r.node))||r.node.attrs.signature||r.marks.some(m=>m.type===schema.marks.paragraph_label))));
+    for(const [command,mark] of Object.entries({bold:'strong',italic:'em',underline:'underline',strikeThrough:'strike',caps:'caps'})){
+      const toggle={italic:toggleItalic,caps:toggleCaps}[command];
+      const active=runs.length&&runs.every(r=>toggle?toggle.shows(r.node,r.marks):r.marks.some(m=>m.type===schema.marks[mark]));
       const button=document.querySelector(`[data-command="${command}"]`);
       button.setAttribute('aria-pressed',String(!!active));
     }
@@ -492,7 +534,7 @@ export function createEditor(state,book,panels) {
       state:EditorState.create({schema,doc,plugins:[
         history(),figures,replaced,ids,typography,
         keymap({'Mod-z':undo,'Shift-Mod-z':redo,'Mod-y':redo,
-          'Mod-b':toggleMark(schema.marks.strong),'Mod-i':toggleMark(schema.marks.em),'Mod-u':toggleMark(schema.marks.underline),
+          'Mod-b':toggleMark(schema.marks.strong),'Mod-i':toggleItalic,'Mod-u':toggleMark(schema.marks.underline),
           'Mod-Home':(s,d)=>{d(s.tr.setSelection(TextSelection.atStart(s.doc)).scrollIntoView());return true;},
           'Mod-End':(s,d)=>{d(s.tr.setSelection(TextSelection.atEnd(s.doc)).scrollIntoView());return true;},
           'Shift-Enter':(s,d)=>{d(s.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());return true;},
@@ -507,6 +549,8 @@ export function createEditor(state,book,panels) {
       attributes:{role:'textbox','aria-multiline':'true'},
       scrollMargin:{top:40,bottom:180},scrollThreshold:{top:40,bottom:180},
       handleDOMEvents:{keydown(){captureNativeSelection();return false;}},
+      // Вставка из Word и браузеров часто несет font-style:normal/text-transform:none — это не точечная правка стиля.
+      transformPasted(slice){return new Slice(stripPresetMarks(slice.content),slice.openStart,slice.openEnd);},
       handlePaste(editor,event){
         const file=[...event.clipboardData.items].find(i=>i.type.startsWith('image/'))?.getAsFile();
         if(file){upload(file);return true;}return false;
@@ -640,11 +684,11 @@ export function createEditor(state,book,panels) {
     if(!view)return;
     const {from,to,empty}=view.state.selection;let tr=view.state.tr;
     if(empty)tr.setStoredMarks([]);
-    else for(const mark of ['text_style','letter_spacing','strong','em','underline','strike'])tr.removeMark(from,to,schema.marks[mark]);
+    else for(const mark of ['text_style','letter_spacing','strong','em','upright','caps','no_caps','underline','strike'])tr.removeMark(from,to,schema.marks[mark]);
     for(const {node,pos} of selectedBlocks())tr.setNodeMarkup(pos,undefined,{...node.attrs,size:null,family:null,leading:null,indent:null,align:null,signature:false});
     finish(tr);
   };
-  const commands={undo,redo,bold:toggleMark(schema.marks.strong),italic:toggleMark(schema.marks.em),underline:toggleMark(schema.marks.underline),strikeThrough:toggleMark(schema.marks.strike)};
+  const commands={undo,redo,bold:toggleMark(schema.marks.strong),italic:toggleItalic,caps:toggleCaps,underline:toggleMark(schema.marks.underline),strikeThrough:toggleMark(schema.marks.strike)};
   for(const button of document.querySelectorAll('[data-command]'))button.onclick=()=>{
     if(view){commands[button.dataset.command]?.(view.state,view.dispatch,view);view.focus();syncToolbar();}
   };

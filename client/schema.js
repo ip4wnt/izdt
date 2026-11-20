@@ -112,6 +112,10 @@ export const schema = new Schema({
       {tag:'span[data-style=paragraph]',getAttrs:d=>({id:d.id||uid(),plain:false})},
       {tag:'span[data-style=paragraph-plain]',getAttrs:d=>({id:d.id||uid(),plain:true})}],
       toDOM:m=>['span',{'data-style':m.attrs.plain?'paragraph-plain':'paragraph',id:m.attrs.id},0]},
+    // Точечная отмена/включение того, что задано стилем: курсив параграфа и подписи, прописные заголовков 1–2.
+    upright:{parseDOM:[{style:'font-style=normal'}],toDOM:()=>['span',{style:'font-style:normal'},0]},
+    caps:{parseDOM:[{style:'text-transform=uppercase'}],toDOM:()=>['span',{style:'text-transform:uppercase'},0]},
+    no_caps:{parseDOM:[{style:'text-transform=none'}],toDOM:()=>['span',{style:'text-transform:none'},0]},
     // Разрядка: отдельная метка, чтобы сочеталась с размером и шрифтом; в оглавление попадает только текст.
     letter_spacing:{attrs:{value:{}},
       parseDOM:[{style:'letter-spacing',getAttrs:v=>/^(?:0?\.\d{1,3}|1(?:\.0{1,3})?)em$/.test(v)&&parseFloat(v)>0?{value:`${Number(parseFloat(v).toFixed(3))}em`}:false}],
@@ -127,4 +131,7 @@ export function serializeDocument(doc) {
   container.append(DOMSerializer.fromSchema(schema).serializeFragment(doc.content));
   return container.innerHTML;
 }
+/** Что задает сам стиль: курсив (параграф оглавления, подпись) и прописные (заголовки 1–2). */
+export const presetItalic=(block,marks=[])=>(block.type.name==='paragraph'&&/^paragraph/.test(block.attrs.kind||''))||!!block.attrs?.signature||marks.some(m=>m.type===schema.marks.paragraph_label);
+export const presetCaps=block=>block.type.name==='heading'&&block.attrs.level<=2;
 export function styleName(node) {return node.type.name==='heading'?`h${node.attrs.level}`:node.attrs.kind||'p';}
