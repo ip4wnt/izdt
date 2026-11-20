@@ -144,6 +144,112 @@ export function cropPNG(buf, {x, y, width, height}) {
   return Buffer.concat(parts);
 }
 
+// Сборка PNG из исходных блоков: меняются только переданные (IHDR, IDAT, tRNS, sBIT, bKGD), остальные — как были и на своих местах.
+function rebuild(chunks, {ihdr, idat, trns, sbit, bkgd} = {}) {
+  const parts = [SIGNATURE, chunk('IHDR', ihdr || chunks[0].data)];
+  let wroteData = false, wroteTRNS = false;
+  const replaced = {tRNS: trns, sBIT: sbit, bKGD: bkgd};
+  for (const c of chunks.slice(1)) {
+    if (c.type === 'IDAT') {
+      if (trns && !wroteTRNS) {parts.push(chunk('tRNS', trns)); wroteTRNS = true;}
+      if (!idat) {parts.push(chunk('IDAT', c.data)); continue;}
+      if (!wroteData) for (let i = 0; i < idat.length; i += 1 << 18) parts.push(chunk('IDAT', idat.subarray(i, i + (1 << 18))));
+      wroteData = true; continue;
+    }
+    if (c.type in replaced && replaced[c.type] !== undefined) {
+      if (c.type === 'tRNS') {if (trns && !wroteTRNS) {parts.push(chunk('tRNS', trns)); wroteTRNS = true;} continue;}
+      if (replaced[c.type]) parts.push(chunk(c.type, replaced[c.type]));
+      continue;
+    }
+    parts.push(chunk(c.type, c.data));
+  }
+  return Buffer.concat(parts);
+}
+const sample = (px, i, depth) => depth === 16 ? (px[i * 2] << 8) | px[i * 2 + 1] : px[i];
+
+// Прозрачность одного цвета: все пиксели ровно этого цвета (как у пикселя x, y) становятся прозрачными, остальные не меняются.
+// Палитра, серый и RGB без своей прозрачности — только блок tRNS, данные картинки (IDAT) остаются байт в байт.
+export function transparentPNG(buf, {x, y}) {
+  const chunks = readChunks(buf), h = header(chunks[0].data);
+  if (chunks.some(c => c.type === 'acTL')) throw fail(422, 'Анимированные PNG менять нельзя.');
+  if (!(Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < h.width && y < h.height)) throw fail(400, 'Точка вне картинки.');
+  const rows = decodeRows(h, Buffer.concat(chunks.filter(c => c.type === 'IDAT').map(c => c.data)));
+  const oldTRNS = chunks.find(c => c.type === 'tRNS')?.data;
+  const px = getPixel(rows[y], x, h.bits), max = (1 << h.depth) - 1;
+  if (h.color === 3) {
+    const plte = chunks.find(c => c.type === 'PLTE')?.data; if (!plte) throw fail(422, 'PNG поврежден.');
+    const index = px, alpha = Buffer.alloc(plte.length / 3, 255); if (oldTRNS) oldTRNS.copy(alpha, 0, 0, Math.min(oldTRNS.length, alpha.length));
+    if (alpha[index] === 0) throw fail(409, 'Этот цвет уже прозрачный.');
+    let last = 0;
+    for (let i = 0; i < alpha.length; i++) if (plte[i * 3] === plte[index * 3] && plte[i * 3 + 1] === plte[index * 3 + 1] && plte[i * 3 + 2] === plte[index * 3 + 2]) alpha[i] = 0;
+    for (let i = 0; i < alpha.length; i++) if (alpha[i] !== 255) last = i;
+    return rebuild(chunks, {trns: alpha.subarray(0, last + 1)});
+  }
+  if (h.color === 0 || h.color === 2) {
+    const n = h.color === 0 ? 1 : 3, value = Buffer.alloc(n * 2);
+    for (let i = 0; i < n; i++) value.writeUInt16BE(h.bits < 8 ? px : sample(px, i, h.depth), i * 2);
+    if (!oldTRNS) return rebuild(chunks, {trns: value});
+    if (oldTRNS.equals(value)) throw fail(409, 'Этот цвет уже прозрачный.');
+    // Один прозрачный цвет уже есть: добавляем канал прозрачности (серый → серый+альфа, RGB → RGBA), значения цветов те же.
+    const depth = Math.max(8, h.depth), out = [], bytes = depth >> 3, scale = h.depth < 8 ? 255 / max : 1;
+    const transparent = [oldTRNS, value].map(v => Array.from({length: n}, (_, i) => v.readUInt16BE(i * 2)));
+    for (let r = 0; r < h.height; r++) {
+      const row = new Uint8Array(h.width * (n + 1) * bytes);
+      for (let c = 0; c < h.width; c++) {
+        const p = getPixel(rows[r], c, h.bits), vals = h.bits < 8 ? [p] : Array.from({length: n}, (_, i) => sample(p, i, h.depth));
+        const clear = transparent.some(t => t.every((v, i) => v === vals[i]));
+        const all = [...vals.map(v => Math.round(v * scale)), clear ? 0 : (1 << depth) - 1];
+        all.forEach((v, i) => {const o = (c * (n + 1) + i) * bytes; if (bytes === 2) {row[o] = v >> 8; row[o + 1] = v & 255;} else row[o] = v;});
+      }
+      out.push(row);
+    }
+    const ihdr = Buffer.from(chunks[0].data); ihdr[8] = depth; ihdr[9] = h.color === 0 ? 4 : 6; ihdr[12] = 0;
+    const next = header(ihdr), sbitOld = chunks.find(c => c.type === 'sBIT')?.data;
+    const bkgdOld = chunks.find(c => c.type === 'bKGD')?.data;
+    return rebuild(chunks, {ihdr, idat: encodeRows(next, out, h.width), trns: null,
+      sbit: sbitOld ? Buffer.concat([sbitOld, Buffer.from([depth])]) : undefined,
+      bkgd: bkgdOld && h.depth < 8 ? (() => {const b = Buffer.alloc(2); b.writeUInt16BE(Math.round(bkgdOld.readUInt16BE(0) * scale)); return b;})() : undefined});
+  }
+  // Серый+альфа и RGBA: меняется только альфа у пикселей этого цвета.
+  const n = h.color === 4 ? 1 : 3, bytes = h.depth >> 3, size = (n + 1) * bytes;
+  const target = Array.from({length: n}, (_, i) => sample(px, i, h.depth));
+  if (sample(px, n, h.depth) === 0) throw fail(409, 'Этот пиксель уже прозрачный.');
+  for (const row of rows) for (let c = 0; c < h.width; c++) {
+    const p = row.subarray(c * size, (c + 1) * size);
+    if (target.every((v, i) => sample(p, i, h.depth) === v)) p.fill(0, n * bytes, size);
+  }
+  const ihdr = Buffer.from(chunks[0].data); ihdr[12] = 0;
+  return rebuild(chunks, {ihdr, idat: encodeRows(h, rows, h.width)});
+}
+
+export async function transparentImage(buf, point) {
+  const isPNG = buf.subarray(0, 8).equals(SIGNATURE);
+  if (isPNG && pngOrientation(readChunks(buf)) === 1) return transparentPNG(buf, point);
+  let sharp;
+  try {sharp = (await import('sharp')).default;}
+  catch {throw fail(501, 'Для JPEG, WebP и GIF на сервере нужен модуль sharp (npm install sharp).');}
+  const meta = await sharp(buf, {pages: 1}).metadata();
+  if ((meta.pages || 1) > 1) throw fail(422, 'Анимированные картинки менять нельзя.');
+  // Цвета читаются без перевода в sRGB (профиль сохраняется), маска прозрачности добавляется к тем же пикселям.
+  const {data, info} = await sharp(buf).rotate().keepIccProfile().ensureAlpha().raw().toBuffer({resolveWithObject: true});
+  const {x, y} = point, ch = info.channels, n = ch - 1;
+  if (!(Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < info.width && y < info.height)) throw fail(400, 'Точка вне картинки.');
+  const at = (y * info.width + x) * ch, target = data.subarray(at, at + n), alpha = Buffer.alloc(info.width * info.height);
+  if (data[at + n] === 0) throw fail(409, 'Этот пиксель уже прозрачный.');
+  for (let p = 0, i = 0; p < alpha.length; p++, i += ch) {
+    let same = true; for (let k = 0; k < n; k++) if (data[i + k] !== target[k]) {same = false; break;}
+    alpha[p] = same ? 0 : data[i + n];
+  }
+  const png = {compressionLevel: 9, adaptiveFiltering: true}, rawAlpha = {raw: {width: info.width, height: info.height, channels: 1}};
+  // Без своей прозрачности (обычный JPEG): канал альфа просто добавляется к тем же цветам.
+  if (!meta.hasAlpha) return sharp(buf).rotate().joinChannel(alpha, rawAlpha).keepMetadata().png(png).toBuffer();
+  // Со своей прозрачностью: маска 0/255 умножается на имеющуюся альфу (dest-in), цвета остаются.
+  const mask = Buffer.alloc(info.width * info.height * 4, 255);
+  for (let p = 0; p < alpha.length; p++) if (alpha[p] === 0 && data[p * ch + n] !== 0) mask[p * 4 + 3] = 0;
+  return sharp(buf).rotate().composite([{input: mask, raw: {width: info.width, height: info.height, channels: 4}, blend: 'dest-in'}])
+    .keepMetadata().png(png).toBuffer();
+}
+
 // EXIF-поворот в PNG (блок eXIf): браузер показывает картинку повернутой, координаты рамки — по повернутой.
 function pngOrientation(chunks) {
   const exif = chunks.find(c => c.type === 'eXIf')?.data;

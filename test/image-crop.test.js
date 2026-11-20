@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {cropPNG,readChunks,pngInfo} from '../server/image-crop.js';
+import {cropPNG,transparentPNG,transparentImage,readChunks,pngInfo} from '../server/image-crop.js';
 
 // Маленький PNG для тестов: RGBA 8 бит, каждый пиксель свой цвет, плюс служебные блоки.
 function chunk(type,data){const t=Buffer.from(type,'latin1');const crc=zlib.crc32?zlib.crc32(Buffer.concat([t,data])):0;const h=Buffer.alloc(8);h.writeUInt32BE(data.length);t.copy(h,4);const c=Buffer.alloc(4);c.writeUInt32BE(crc>>>0);return Buffer.concat([h,data,c]);}
@@ -27,6 +27,25 @@ test('PNG crop keeps pixels byte for byte and all ancillary chunks',()=>{
   const extra=buf=>readChunks(buf).filter(c=>!['IHDR','IDAT'].includes(c.type)).map(c=>c.type+':'+c.data.toString('hex'));
   assert.deepEqual(extra(out),extra(src));
   assert.throws(()=>cropPNG(src,{x:30,y:0,width:20,height:5}),/за пределы/);
+});
+
+test('transparent: only the picked color becomes transparent, other pixels and chunks stay',async()=>{
+  // RGBA: альфа 0 только у пикселей ровно того же цвета, остальное побайтно.
+  const src=makePNG(40,30),out=transparentPNG(src,{x:3,y:0}),a=pixels(src),b=pixels(out),t=a[0].subarray(12,15);let cleared=0;
+  for(let y=0;y<30;y++)for(let x=0;x<40;x++){const p=a[y].subarray(x*4,x*4+4),q=b[y].subarray(x*4,x*4+4);
+    if(p.subarray(0,3).equals(t)){assert.equal(q[3],0);assert.ok(q.subarray(0,3).equals(t));cleared++;}else assert.ok(p.equals(q),`${x},${y}`);}
+  assert.ok(cleared>=1);
+  const extra=buf=>readChunks(buf).filter(c=>!['IHDR','IDAT'].includes(c.type)).map(c=>c.type+':'+c.data.toString('hex'));
+  assert.deepEqual(extra(out),extra(src));
+  // RGB без прозрачности: добавляется только tRNS, сами пиксели (IDAT) не меняются.
+  const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(4,0);ihdr.writeUInt32BE(2,4);ihdr[8]=8;ihdr[9]=2;
+  const raw=Buffer.from([0,9,8,7,1,2,3,9,8,7,4,5,6, 0,9,8,7,9,8,7,0,0,0,1,1,1]);
+  const rgb=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',ihdr),chunk('IDAT',zlib.deflateSync(raw)),chunk('IEND',Buffer.alloc(0))]);
+  const o=transparentPNG(rgb,{x:0,y:1}),idat=buf=>readChunks(buf).filter(c=>c.type==='IDAT').map(c=>c.data.toString('hex')).join();
+  assert.equal(idat(o),idat(rgb));assert.equal(readChunks(o).find(c=>c.type==='tRNS').data.toString('hex'),'000900080007');
+  assert.throws(()=>transparentPNG(o,{x:0,y:0}),/уже прозрачный/);
+  assert.throws(()=>transparentPNG(rgb,{x:4,y:0}),/вне картинки/);
+  assert.ok(Buffer.isBuffer(await transparentImage(src,{x:0,y:0})));
 });
 
 test('crop API: new PNG, old file removed after save, old URL redirects',async()=>{
@@ -56,5 +75,13 @@ test('crop API: new PNG, old file removed after save, old URL redirects',async()
     assert.ok(saved.data.html.includes(cropped.data.url)&&!saved.data.html.includes(old),saved.data.html);
     assert.ok(saved.data.html.includes('width="30"')&&saved.data.html.includes('height="20"'));
     assert.deepEqual((await readdir(path.join(dir,'img'))).sort(),[path.basename(cropped.data.url)]);
+    // Прозрачный цвет: тот же размер, новый файл, старый удаляется при сохранении.
+    assert.equal((await request('/api/images/transparent','POST',{src:cropped.data.url,x:30,y:0})).status,400);
+    const clear=await request('/api/images/transparent','POST',{src:cropped.data.url,x:1,y:1});
+    assert.equal(clear.status,201,JSON.stringify(clear.data));assert.deepEqual([clear.data.w,clear.data.h],[30,20]);
+    assert.equal((await request('/api/images/transparent','POST',{src:clear.data.url,x:1,y:1})).status,409);
+    const again=await request('/api/book','PUT',{html:html(cropped.data.url),revision:saved.data.revision});
+    assert.equal(again.status,200);assert.ok(again.data.html.includes(clear.data.url));
+    assert.deepEqual((await readdir(path.join(dir,'img'))).sort(),[path.basename(clear.data.url)]);
   }finally{child.kill();}
 });

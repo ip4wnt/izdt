@@ -67,20 +67,22 @@ export function createEditor(state,book,panels) {
       return tr.docChanged?tr.setMeta('addToHistory',false):null;
     }
   });
-  async function cropImageAt(pos,rect,naturalWidth){
+  // Обрезка и прозрачный цвет: сервер пишет новый PNG, в книге меняется адрес (и ширина — только при обрезке).
+  async function replaceImageAt(pos,endpoint,payload,label,scale=1){
     if(typeof pos!=='number')throw new Error('Картинка не найдена.');
     const node=view.state.doc.nodeAt(pos);if(!node||!imageTypes.has(node.type.name))throw new Error('Картинка не найдена.');
     let uses=0;view.state.doc.descendants(n=>{if(imageTypes.has(n.type.name)&&n.attrs.src===node.attrs.src)uses++;});
-    uploadCount++;status('Обрезка изображения…');
+    const was=$('save-status').textContent;uploadCount++;status(label);
     let result;
-    try{result=await api('images/crop',{method:'POST',data:{src:node.attrs.src,...rect,keep:uses>1}});}
+    try{result=await api(endpoint,{method:'POST',data:{src:node.attrs.src,...payload,keep:uses>1}});}
+    catch(err){status(was);throw err;}
     finally{uploadCount--;}
     // Ширина на странице уменьшается вместе с картинкой: рисунок остается того же масштаба, только без полей.
     const current=view.state.doc.nodeAt(pos)?.attrs.src===node.attrs.src?pos:null;
     let at=current;if(at===null)view.state.doc.descendants((n,p)=>{if(at===null&&n.attrs?.id&&n.attrs.id===node.attrs.id)at=p;});
     if(at===null)throw new Error('Картинка не найдена.');
     const fresh=view.state.doc.nodeAt(at),before=fresh.attrs.width||(fresh.type.name==='figure_image'?100:45);
-    const width=Math.max(5,Math.min(100,Math.round(before*rect.width/naturalWidth)));
+    const width=scale===1?fresh.attrs.width:Math.max(5,Math.min(100,Math.round(before*scale)));
     // Отмена ранних шагов (Ctrl+Z) не возвращает ни старый файл, ни прежнюю ширину обрезанной картинки.
     if(uses<=1){replacedImages.set(node.attrs.src,{src:result.url,w:result.w,h:result.h,width});for(const [k,v] of replacedImages)if(v.src===node.attrs.src)replacedImages.set(k,{src:result.url,w:result.w,h:result.h,width});}
     const tr=view.state.tr.setNodeMarkup(at,undefined,{...fresh.attrs,src:result.url,w:result.w,h:result.h,width}).setMeta('addToHistory',false);
@@ -178,8 +180,8 @@ export function createEditor(state,book,panels) {
     $('image-tools').hidden=!image;$('text-tools').hidden=!!image;
     if(image&&!$('style-editor').hidden)closeStyleEditor();
     if(cropping&&!image)cropping.stop();
-    for(const id of ['image-wrap','image-align','image-width','image-alt','delete-image','image-crop'])$(id).disabled=!image||!!cropping;
-    $('image-crop').setAttribute('aria-pressed',String(!!cropping));
+    for(const id of ['image-wrap','image-align','image-width','image-alt','delete-image','image-crop','image-transparent'])$(id).disabled=!image||!!cropping;
+    $('image-crop').setAttribute('aria-pressed',String(cropping?.kind==='crop'));
     $('image-wrap').querySelector('[value=inline]').disabled=!!figure;
     $('figure-text').hidden=!image||!!figure?.overlay;
     $('figure-caption').hidden=!image;
@@ -343,17 +345,43 @@ export function createEditor(state,book,panels) {
         const x=Math.round(l*W),y=Math.round(t*H),width=Math.round(r*W)-x,height=Math.round(b*H)-y;
         if(x===0&&y===0&&width===W&&height===H){stopCrop();editor.focus();return;}
         saveButton.disabled=cancelButton.disabled=true;saveButton.textContent='Сохранение…';
-        try{await cropImageAt(getPos(),{x,y,width,height},W);stopCrop();}
+        try{await replaceImageAt(getPos(),'images/crop',{x,y,width,height},'Обрезка изображения…',width/W);stopCrop();}
         catch(err){notify(err.message,12000);saveButton.disabled=cancelButton.disabled=false;saveButton.textContent='Сохранить';}
       };
-      cropping={stop:stopCrop};syncToolbar();
+      cropping={stop:stopCrop,kind:'crop'};syncToolbar();
     };
     dom.izdtStartCrop=startCrop;
-    return {dom,update(n){if(n.type!==current.type)return false;if(crop&&n.attrs.src!==current.attrs.src)stopCrop();current=n;render();return true;},
+    // Пипетка: щелчок по картинке делает этот цвет прозрачным во всем изображении (точное совпадение).
+    let pick=null;
+    const stopPick=()=>{if(!pick)return;pick.ui.remove();img.removeEventListener('pointermove',pick.hover);img.removeEventListener('click',pick.click,true);pick=null;dom.classList.remove('picking');dom.draggable=true;cropping=null;syncToolbar();};
+    const startPick=()=>{
+      if(pick||crop)return;
+      if(!(img.naturalWidth>0)){notify('Картинка еще не загрузилась.');return;}
+      const W=img.naturalWidth,H=img.naturalHeight,point=e=>{const r=img.getBoundingClientRect();return {x:Math.min(W-1,Math.max(0,Math.floor((e.clientX-r.left)/r.width*W))),y:Math.min(H-1,Math.max(0,Math.floor((e.clientY-r.top)/r.height*H)))};};
+      let ctx=null;try{const c=document.createElement('canvas');c.width=W;c.height=H;ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);ctx.getImageData(0,0,1,1);}catch{ctx=null;}
+      const ui=document.createElement('span');ui.className='pick-bar';ui.contentEditable='false';
+      const swatch=document.createElement('span');swatch.className='pick-swatch';
+      const hint=document.createElement('span');hint.className='pick-hint';hint.textContent='Щелкните по цвету, который станет прозрачным';
+      const cancelButton=document.createElement('button');cancelButton.type='button';cancelButton.textContent='Отмена';cancelButton.className='crop-cancel';
+      ui.append(swatch,hint,cancelButton);dom.append(ui);
+      const hover=e=>{if(!ctx)return;const {x,y}=point(e),[r,g,b,a]=ctx.getImageData(x,y,1,1).data;swatch.style.background=a?`rgb(${r} ${g} ${b})`:'transparent';swatch.classList.toggle('clear',!a);};
+      const click=async e=>{
+        e.preventDefault();e.stopPropagation();if(pick.busy)return;
+        pick.busy=true;hint.textContent='Сохранение…';cancelButton.disabled=true;
+        try{await replaceImageAt(getPos(),'images/transparent',point(e),'Прозрачный цвет…');stopPick();}
+        catch(err){notify(err.message,12000);pick.busy=false;hint.textContent='Щелкните по цвету, который станет прозрачным';cancelButton.disabled=false;}
+      };
+      cancelButton.onclick=e=>{e.preventDefault();stopPick();editor.focus();};
+      img.addEventListener('pointermove',hover);img.addEventListener('click',click,true);
+      pick={ui,hover,click,busy:false};dom.classList.add('picking');dom.draggable=false;
+      cropping={stop:stopPick,kind:'pick'};syncToolbar();
+    };
+    dom.izdtStartPick=startPick;
+    return {dom,update(n){if(n.type!==current.type)return false;if(crop&&n.attrs.src!==current.attrs.src)stopCrop();if(pick&&!pick.busy&&n.attrs.src!==current.attrs.src)stopPick();current=n;render();return true;},
       selectNode(){dom.classList.add('ProseMirror-selectednode');},
-      deselectNode(){dom.classList.remove('ProseMirror-selectednode');stopCrop();},
-      destroy(){if(crop)cropping=null;},
-      stopEvent:e=>e.target===handle||!!e.target.closest?.('.crop-ui'),ignoreMutation:()=>true};
+      deselectNode(){dom.classList.remove('ProseMirror-selectednode');stopCrop();if(pick&&!pick.busy)stopPick();},
+      destroy(){if(crop||pick)cropping=null;},
+      stopEvent:e=>e.target===handle||!!e.target.closest?.('.crop-ui,.pick-bar')||(!!pick&&e.target===img),ignoreMutation:()=>true};
   }
   // Плашка с текстом на картинке: перетаскивается за ручку, ширина меняется маркером справа.
   function overlayView(node,editor,getPos) {
@@ -566,6 +594,7 @@ export function createEditor(state,book,panels) {
     finish(tr.setSelection(NodeSelection.create(tr.doc,selected.pos)));
   }
   $('image-crop').onclick=()=>{const image=selectedImage();if(!image)return;view.nodeDOM(image.pos)?.izdtStartCrop?.();};
+  $('image-transparent').onclick=()=>{const image=selectedImage();if(!image)return;view.nodeDOM(image.pos)?.izdtStartPick?.();};
   $('image-wrap').onchange=e=>changeImage({mode:e.target.value});
   $('image-align').onchange=e=>{
     const image=selectedImage();if(!image)return;

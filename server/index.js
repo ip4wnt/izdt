@@ -3,7 +3,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {cropImage} from './image-crop.js';
+import {cropImage,transparentImage} from './image-crop.js';
 import {parseImageSize} from './image-size.js';
 import {bookDir,markReplaced,resolveReplaced,getBook,getNotes,deleteNote,json,transaction,regenerate,saveBook,readerPage,sharedData,notesFile,getBookmark} from './store.js';
 import {parseFragment,resolveNote} from './document.js';
@@ -124,14 +124,15 @@ const server=http.createServer(async(req,res)=>{
       const name=`${randomUUID()}.${ext}`;await mkdir(path.join(bookDir,'img'),{recursive:true});await writeFile(path.join(bookDir,'img',name),buffer);
       return send({url:`/books/bees/img/${name}`},201);
     }
-    if(route==='/api/images/crop'&&req.method==='POST'){
-      editor(req);const data=await readData(req);
+    // Обрезка и прозрачный цвет: картинка перезаписывается новым PNG, старый файл уходит при сохранении книги.
+    if((route==='/api/images/crop'||route==='/api/images/transparent')&&req.method==='POST'){
+      editor(req);const data=await readData(req), crop=route.endsWith('/crop');
       const m=/^\/books\/bees\/img\/([a-zA-Z0-9_-]+\.(png|jpg|jpeg|webp|gif))$/.exec(data.src||'');
       if(!m)throw fail(400,'Неверная картинка.');
-      const rect={};for(const k of ['x','y','width','height']){const v=data[k];if(!Number.isInteger(v)||v<0)throw fail(400,'Неверная рамка обрезки.');rect[k]=v;}
+      const args={};for(const k of crop?['x','y','width','height']:['x','y']){const v=data[k];if(!Number.isInteger(v)||v<0)throw fail(400,crop?'Неверная рамка обрезки.':'Неверная точка.');args[k]=v;}
       return send(await transaction(async()=>{
         const name=(await resolveReplaced(m[1]))||m[1], file=path.join(bookDir,'img',name);
-        const output=await cropImage(await readFile(file),rect);
+        const output=await (crop?cropImage:transparentImage)(await readFile(file),args);
         const next=`${randomUUID()}.png`;await writeFile(path.join(bookDir,'img',next),output);
         // Та же картинка стоит в книге еще где-то: старый файл остается, меняется только эта.
         if(data.keep!==true)await markReplaced(name,next);

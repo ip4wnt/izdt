@@ -395,6 +395,32 @@ try{
     await page.locator(`#${id}`).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'image-crop-done.png')});
     pass('image crop: frame, Esc cancels, save makes exact-size PNG, page width scales, undo keeps new file, old file removed after save');
   }
+  // Прозрачный цвет: пипетка, Esc отменяет, щелчок дает новый PNG того же размера, цвет прозрачный, старый файл удаляется.
+  {
+    const shell=page.locator('.image-shell').filter({has:page.locator('img[src$=".png"]')}).last();const id=await shell.getAttribute('id');
+    await page.locator(`#${id}`).click();
+    const before=await page.locator(`#${id}`).evaluate(el=>({src:el.querySelector('img').getAttribute('src'),w:el.querySelector('img').naturalWidth,h:el.querySelector('img').naturalHeight,width:el.style.width}));
+    await page.locator('#image-transparent').click();await page.waitForSelector(`#${id} .pick-bar`);
+    assert.ok(await page.locator('#image-crop').isDisabled()&&await page.locator('#image-transparent').isDisabled());
+    await page.keyboard.press('Escape');assert.equal(await page.locator('.pick-bar').count(),0);
+    await page.locator(`#${id}`).click();await page.locator('#image-transparent').click();await page.waitForSelector(`#${id} .pick-bar`);
+    // Точка с непрозрачным цветом: в углах гравюры фон уже прозрачный.
+    const spot=await page.locator(`#${id} img`).evaluate(img=>{const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const x=c.getContext('2d');x.drawImage(img,0,0);const d=x.getImageData(0,0,c.width,c.height).data;
+      for(let y=Math.floor(c.height/2);y<c.height;y++)for(let i=0;i<c.width;i++){const o=(y*c.width+i)*4;if(d[o+3]===255)return {x:i,y,W:c.width,H:c.height,rgb:[d[o],d[o+1],d[o+2]]};}});
+    const at=async()=>{const r=await page.locator(`#${id} img`).boundingBox();return [r.x+(spot.x+.5)/spot.W*r.width,r.y+(spot.y+.5)/spot.H*r.height];};
+    await page.mouse.move(...await at());
+    await page.locator(`#${id}`).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'image-transparent-pick.png')});
+    await page.mouse.click(...await at());
+    await page.waitForFunction(([i,src])=>{const img=document.getElementById(i)?.querySelector('img');return img&&!img.src.endsWith(src)&&img.complete&&img.naturalWidth>0&&!document.querySelector('.pick-bar');},[id,before.src]);
+    const after=await page.locator(`#${id}`).evaluate(el=>{const img=el.querySelector('img'),c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const x=c.getContext('2d');x.drawImage(img,0,0);
+      const p=x.getImageData(0,0,c.width,c.height).data;let same=0;for(let i=0;i<p.length;i+=4)if(p[i+3]===0)same++;return {src:img.getAttribute('src'),w:img.naturalWidth,h:img.naturalHeight,width:el.style.width,clear:same};});
+    assert.deepEqual([after.w,after.h,after.width],[before.w,before.h,before.width]);assert.match(after.src,/\.png$/);
+    await saved();
+    const files=await readdir(path.join(data,'img'));
+    assert.ok(files.includes(path.basename(after.src))&&!files.includes(path.basename(before.src)),files.join(','));
+    await page.locator(`#${id}`).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'image-transparent-done.png')});
+    pass(`image transparent: eyedropper, Esc cancels, click makes same-size PNG, width kept, old file removed after save (${after.clear} transparent px)`);
+  }
   await clickText('garden');await page.keyboard.press('Control+End');await page.keyboard.press('Enter');await page.keyboard.type('Новая строка');
   await page.selectOption('#text-style','h3');
   assert.ok(await page.locator('#book h3').filter({hasText:'Новая строка'}).count());
