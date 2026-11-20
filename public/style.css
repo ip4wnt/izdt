@@ -60,7 +60,8 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 .book .image-figure>img,.book .image-figure>.image-shell.figure-image{grid-area:1/1;display:block;width:100%;max-width:100%;height:auto;justify-self:start;margin:0;float:none;mix-blend-mode:multiply}
 .book .image-figure>.figure-image[data-align=center]{justify-self:center}
 .book .image-figure>.figure-image[data-align=right]{justify-self:end}
-[data-theme=dark] .book .image-figure>img,[data-theme=dark] .book .image-figure>.image-shell.figure-image{filter:invert(.87);mix-blend-mode:screen}
+/* Темная тема: гравюры инвертируются одинаково, и в блоке с подписью, и внутри абзаца. */
+[data-theme=dark] .book .image-figure>img,[data-theme=dark] .book .image-figure>.image-shell.figure-image,[data-theme=dark] .book img.book-image,[data-theme=dark] .book .image-shell.book-image{filter:invert(.87);mix-blend-mode:screen}
 /* Подпись под картинкой: вторая строка сетки, ширина и положение как у картинки (--image-width ставит редактор). */
 .book .image-figure>.image-caption{grid-area:2/1;width:var(--image-width,100%);max-width:100%;justify-self:start;margin:.8rem 0 0;box-sizing:border-box}
 .book .image-figure[data-align=center]>.image-caption{justify-self:center}

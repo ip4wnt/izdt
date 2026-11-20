@@ -572,6 +572,9 @@ try{
   pass('real selection note and bookmark are shared across fresh browser profiles and saved in Git data files');
   await page.locator('.rail').hover();await page.locator('#toggle-theme').click();
   await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:path.join(output,'dark.png')});
+  // Картинка в абзаце и картинка-блок инвертируются одинаково.
+  const filters=await page.evaluate(()=>[document.querySelector('#book img.book-image'),document.querySelector('#book .image-figure>img')].map(el=>el&&getComputedStyle(el).filter));
+  assert.ok(filters.every(f=>/invert/.test(f||'')),JSON.stringify(filters));
   await page.locator('#toggle-theme').click();await page.locator('#show-help').click();
   await page.locator('#help[open]').waitFor();await page.locator('.dialog-close').click();
   pass('dark mode and help');
@@ -649,7 +652,7 @@ try{
     assert.equal(toc.example.level,3);assert.equal(toc.example.number,'');assert.equal(toc['distribution-title'].number,'3');assert.equal(toc['benefits-title'].number,'4');
     await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
     await page.waitForFunction(()=>{const el=document.querySelector('#book #example');return el?.isConnected&&getComputedStyle(el).fontStyle==='italic';},null,{timeout:5000});
-    await page.locator('#apiaries').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);await page.evaluate(()=>document.querySelector('#book #apiaries').scrollIntoView({block:'center'}));await page.waitForTimeout(300);
     await page.screenshot({path:path.join(output,'paragraph-plain-spacing.png')});
     // Откат правок, чтобы следующие проверки шли по исходному тексту.
     await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
