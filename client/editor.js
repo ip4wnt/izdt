@@ -4,7 +4,7 @@ import {DOMSerializer, Fragment, Slice} from 'prosemirror-model';
 import {baseKeymap, toggleMark} from 'prosemirror-commands';
 import {history, undo, redo, closeHistory} from 'prosemirror-history';
 import {keymap} from 'prosemirror-keymap';
-import {schema, parseDocument, serializeDocument, DEFAULTS, applyStyles, styleName, imageDOM, presetItalic, presetCaps} from './schema.js';
+import {schema, parseDocument, serializeDocument, DEFAULTS, applyStyles, styleName, imageDOM, presetItalic, presetCaps, gridWidths, GRID_MAX_COLUMNS} from './schema.js';
 import {STYLE_KEYS, stylesCSS} from '../shared/model.js';
 import {api, applyAssetURLs, notify, base, storage} from '../public/js/api.js';
 import {makeTOC} from '../shared/model.js';
@@ -109,6 +109,63 @@ const figures=new Plugin({
     return tr.docChanged?tr:null;
   }
 });
+// Сетка в конце книги: после нее всегда есть абзац, иначе курсор нельзя поставить под сеткой.
+const gridTail=new Plugin({
+  appendTransaction(transactions,old,state){
+    if(!transactions.some(tr=>tr.docChanged)||state.doc.lastChild?.type!==schema.nodes.grid)return null;
+    return state.tr.insert(state.doc.content.size,schema.nodes.paragraph.create({id:uid()})).setMeta('addToHistory',false);
+  }
+});
+const roundFr=n=>Number(n.toFixed(2));
+const emptyCell=()=>schema.nodes.grid_cell.create({id:uid()},schema.nodes.paragraph.create({id:uid()}));
+const isEmptyCell=cell=>cell.childCount===1&&cell.firstChild.type===schema.nodes.paragraph&&cell.firstChild.content.size===0;
+const isEmptyParagraph=node=>node.type===schema.nodes.paragraph&&node.content.size===0;
+/**
+ * Ширина картинок задана в % контейнера. При переносе в ячейку (factor = 1/доля колонки) и обратно (factor = доля)
+ * проценты пересчитываются, чтобы гравюра на странице осталась того же размера. Плашка пересчитывается через координаты картинки.
+ */
+function scaleImages(node,factor){
+  if(factor===1)return node;
+  const clampWidth=(w,d)=>clampRound((w||d)*factor,5,100);
+  if(node.type===schema.nodes.image)return node.type.create({...node.attrs,width:clampWidth(node.attrs.width,45)},null,node.marks);
+  if(node.type===schema.nodes.figure&&node.firstChild?.type===schema.nodes.figure_image){
+    const image=node.firstChild,square=node.attrs.mode==='square',w=image.attrs.width||(square?45:100),next=clampWidth(w,100);
+    const children=[image.type.create({...image.attrs,width:next})];
+    node.forEach((child,offset,index)=>{
+      if(!index)return;
+      // У «Сверху и снизу» плашка считается от колонки: переводим в координаты картинки и обратно с новой шириной.
+      children.push(child.type===schema.nodes.overlay&&!square?child.type.create(convertOverlay(convertOverlay(child.attrs,true,w,image.attrs.align),false,next,image.attrs.align),child.content):child);
+    });
+    return node.type.create({...node.attrs,width:next},children);
+  }
+  if(node.isLeaf||node.isText||!node.content.size)return node;
+  const children=[];node.forEach(child=>children.push(scaleImages(child,factor)));
+  return node.type.create(node.attrs,Fragment.fromArray(children),node.marks);
+}
+/** Рисунок «Вокруг рамки» в ячейке встает отдельным блоком: ячейка сама задает соседство. */
+function unfloat(node){
+  if(node.type===schema.nodes.figure&&node.attrs.mode==='square'){
+    const image=node.firstChild,w=image.attrs.width||45,align=node.attrs.align;
+    const children=[];node.forEach(child=>children.push(child.type===schema.nodes.overlay?child.type.create(convertOverlay(child.attrs,false,w,align),child.content):child));
+    return node.type.create({...node.attrs,mode:'block'},children);
+  }
+  return node;
+}
+/** Абзац, в котором только картинка (без текста). */
+const imageOnly=node=>node.type===schema.nodes.paragraph&&!node.textContent.trim()&&node.childCount>0&&[...Array(node.childCount).keys()].every(i=>['image','hard_break'].includes(node.child(i).type.name));
+/** Подпись отдельным абзацем: «Подпись к рисунку» или малый текст. */
+const captionLike=node=>node.type===schema.nodes.paragraph&&['caption','small'].includes(node.attrs.kind)&&!!node.textContent.trim();
+/** Выделенные блоки → содержимое ячеек: пустые абзацы-отбивки пропускаются, картинка и подпись под ней идут в одну ячейку. */
+function groupForCells(blocks){
+  const groups=[];
+  for(const node of blocks){
+    if(isEmptyParagraph(node))continue;
+    const last=groups.at(-1);
+    if(last&&captionLike(node)&&last.length===1&&imageOnly(last[0])){last.push(node);continue;}
+    groups.push([node]);
+  }
+  return groups;
+}
 export function createEditor(state,book,panels) {
   let view=null, dirty=false, flight=null, timer=null, conflict=false, uploadCount=0, draftTimer=null;
   // Обрезанные картинки: старый адрес → новый файл. Отмена (Ctrl+Z) не возвращает удаленный файл.
@@ -254,6 +311,16 @@ export function createEditor(state,book,panels) {
     setControl('image-alt',image?.node.attrs.alt||'');
     $('overlay-tools').hidden=!overlay;
     if(overlay){setControl('overlay-x',overlay.node.attrs.x);setControl('overlay-y',overlay.node.attrs.y);setControl('overlay-width',overlay.node.attrs.width);}
+    const grid=gridAt();
+    $('grid-tools').hidden=!grid;$('insert-grid').disabled=!!grid||!blocks.length;
+    $('insert-grid').title=grid?'Сетку нельзя вставить внутрь другой сетки':'Сетка: невидимая раскладка в колонки. Если выделено несколько блоков (например, два рисунка с подписями), каждый встанет в свою ячейку';
+    if(grid){
+      const widths=gridWidths(grid.node.attrs.widths),n=widths.length,total=widths.reduce((a,b)=>a+b,0);
+      setControl('grid-cols',n);setControl('grid-rows',Math.ceil(grid.node.childCount/n));
+      setControl('grid-col-width',Math.round(widths[grid.cell%n]/total*100));$('grid-col-width').disabled=n===1;
+      $('grid-equal').disabled=widths.every(w=>w===widths[0]);
+      setControl('grid-gap',grid.node.attrs.gap);setControl('grid-valign',grid.node.attrs.valign);$('grid-keep').checked=!!grid.node.attrs.keep;
+    }
   }
   function updateTOC() {
     const root=document.createElement('div');root.innerHTML=currentHTML();
@@ -532,13 +599,13 @@ export function createEditor(state,book,panels) {
     state.editing=true;document.body.classList.add('editing');book.setAttribute('spellcheck','true');$('editor-toolbar').hidden=false;$('toggle-editor').classList.add('active');
     view=new EditorView({mount:book},{
       state:EditorState.create({schema,doc,plugins:[
-        history(),figures,replaced,ids,typography,
+        history(),figures,gridTail,replaced,ids,typography,
         keymap({'Mod-z':undo,'Shift-Mod-z':redo,'Mod-y':redo,
           'Mod-b':toggleMark(schema.marks.strong),'Mod-i':toggleItalic,'Mod-u':toggleMark(schema.marks.underline),
           'Mod-Home':(s,d)=>{d(s.tr.setSelection(TextSelection.atStart(s.doc)).scrollIntoView());return true;},
           'Mod-End':(s,d)=>{d(s.tr.setSelection(TextSelection.atEnd(s.doc)).scrollIntoView());return true;},
           'Shift-Enter':(s,d)=>{d(s.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());return true;},
-          'Backspace':removeEmptyFigurePart}),
+          'Backspace':removeEmptyFigurePart,'Tab':gridCellStep(1),'Shift-Tab':gridCellStep(-1)}),
         keymap(baseKeymap)
       ]}),
       dispatchTransaction:dispatch,
@@ -820,6 +887,126 @@ export function createEditor(state,book,panels) {
   numberControl('overlay-x',0,90,v=>overlayAttribute('x',Math.round(v)));
   numberControl('overlay-y',0,300,v=>overlayAttribute('y',Math.round(v)));
   numberControl('overlay-width',10,100,v=>overlayAttribute('width',Math.round(v)));
+  // Сетка: где курсор (или выбранная картинка) и в какой ячейке.
+  function gridAt() {
+    if(!view)return null;
+    const {$from}=view.state.selection;
+    for(let depth=$from.depth;depth>0;depth--)if($from.node(depth).type===schema.nodes.grid)
+      return {node:$from.node(depth),pos:$from.before(depth),cell:depth<$from.depth?$from.index(depth):0};
+    return null;
+  }
+  const cellStart=(doc,gridPos,index)=>{
+    const grid=doc.nodeAt(gridPos);let pos=gridPos+1;
+    for(let i=0;i<Math.min(index,grid.childCount-1);i++)pos+=grid.child(i).nodeSize;
+    return pos;
+  };
+  // Tab / Shift+Tab: следующая и предыдущая ячейка.
+  function gridCellStep(dir){
+    return (state,dispatch)=>{
+      const {$from}=state.selection;
+      for(let depth=$from.depth;depth>0;depth--)if($from.node(depth).type===schema.nodes.grid){
+        const grid=$from.node(depth),gridPos=$from.before(depth),index=depth<$from.depth?$from.index(depth):0,next=index+dir;
+        if(next<0||next>=grid.childCount)return true;
+        if(dispatch)dispatch(state.tr.setSelection(TextSelection.near(state.doc.resolve(cellStart(state.doc,gridPos,next)+1))).scrollIntoView());
+        return true;
+      }
+      return false;
+    };
+  }
+  function replaceGrid(grid,attrs,cells,cursor) {
+    const node=schema.nodes.grid.create({...grid.node.attrs,...attrs},cells);
+    const tr=view.state.tr.replaceWith(grid.pos,grid.pos+grid.node.nodeSize,node);
+    finish(tr.setSelection(TextSelection.near(tr.doc.resolve(cellStart(tr.doc,grid.pos,cursor)+1))));
+  }
+  const gridCells=grid=>{const cells=[];grid.node.forEach(c=>cells.push(c));return cells;};
+  // Вставка: выделено несколько блоков — каждый (картинка вместе со своей подписью) встает в свою ячейку;
+  // иначе под текущим блоком появляется пустая сетка 1 × 2.
+  $('insert-grid').onclick=()=>{
+    if(!view)return;
+    captureNativeSelection();
+    if(gridAt()){notify('Сетку нельзя вставить внутрь другой сетки.');return;}
+    const {doc,selection}=view.state,{$from,$to,empty}=selection;
+    const range=!empty&&$from.blockRange($to);
+    if(range&&range.depth===0&&range.endIndex-range.startIndex>1){
+      const blocks=[];for(let i=range.startIndex;i<range.endIndex;i++)blocks.push(doc.child(i));
+      const groups=groupForCells(blocks);
+      if(groups.length>1&&groups.length<=12){
+        const n=groups.length<=GRID_MAX_COLUMNS?groups.length:groups.length%3===0?3:2;
+        const cells=groups.map(group=>schema.nodes.grid_cell.create({id:uid()},group.map(node=>scaleImages(unfloat(node),n))));
+        while(cells.length%n)cells.push(emptyCell());
+        const grid=schema.nodes.grid.create({id:uid(),widths:Array(n).fill(1).join(' '),gap:2,valign:'bottom'},cells);
+        const tr=view.state.tr.replaceWith(range.start,range.end,grid);
+        finish(tr.setSelection(TextSelection.near(tr.doc.resolve(range.start+2))).scrollIntoView());
+        return;
+      }
+      if(groups.length>12){notify('Выделено слишком много блоков: в сетку за раз можно поставить до 12.');return;}
+    }
+    if(!$from.depth){notify('Поставьте курсор в абзац, под которым нужна сетка.');return;}
+    const top=$from.node(1),start=$from.before(1);
+    const grid=schema.nodes.grid.create({id:uid(),widths:'1 1',gap:2,valign:'top'},[emptyCell(),emptyCell()]);
+    let tr=view.state.tr,at;
+    if(isEmptyParagraph(top)){tr.replaceWith(start,start+top.nodeSize,grid);at=start;}
+    else{at=start+top.nodeSize;tr.insert(at,grid);}
+    finish(tr.setSelection(TextSelection.near(tr.doc.resolve(at+2))).scrollIntoView());
+  };
+  function setGridColumns(n) {
+    const grid=gridAt();if(!grid)return;
+    const old=gridWidths(grid.node.attrs.widths),oc=old.length;if(n===oc)return;
+    const cells=gridCells(grid),rows=Math.ceil(cells.length/oc),out=[];
+    for(let r=0;r<rows;r++){
+      const row=cells.slice(r*oc,r*oc+oc);while(row.length<oc)row.push(emptyCell());
+      if(n>oc)for(let i=oc;i<n;i++)row.push(emptyCell());
+      else{
+        if(row.slice(n).some(c=>!isEmptyCell(c))){notify('Колонку можно убрать, только когда ее ячейки пустые: перенесите содержимое в другие ячейки.',8000);return;}
+        row.length=n;
+      }
+      out.push(...row);
+    }
+    const average=old.reduce((a,b)=>a+b,0)/oc;
+    const widths=n>oc?[...old,...Array(n-oc).fill(average)]:old.slice(0,n);
+    const row=Math.floor(grid.cell/oc),col=grid.cell%oc;
+    replaceGrid(grid,{widths:widths.map(roundFr).join(' ')},out,row*n+Math.min(col,n-1));
+  }
+  function setGridRows(rows) {
+    const grid=gridAt();if(!grid)return;
+    const n=gridWidths(grid.node.attrs.widths).length,cells=gridCells(grid);
+    while(cells.length%n)cells.push(emptyCell());
+    const now=cells.length/n;if(rows===now)return;
+    if(rows>now)for(let i=cells.length;i<rows*n;i++)cells.push(emptyCell());
+    else{
+      if(cells.slice(rows*n).some(c=>!isEmptyCell(c))){notify('Строку можно убрать, только когда ее ячейки пустые: перенесите содержимое в другие ячейки.',8000);return;}
+      cells.length=rows*n;
+    }
+    replaceGrid(grid,{},cells,Math.min(grid.cell,cells.length-1));
+  }
+  function gridAttribute(attrs) {
+    const grid=gridAt();if(!grid)return;
+    finish(view.state.tr.setNodeMarkup(grid.pos,undefined,{...grid.node.attrs,...attrs}));
+  }
+  numberControl('grid-cols',1,GRID_MAX_COLUMNS,v=>setGridColumns(Math.round(v)));
+  numberControl('grid-rows',1,20,v=>setGridRows(Math.round(v)));
+  numberControl('grid-col-width',10,90,v=>{
+    const grid=gridAt();if(!grid)return;
+    const widths=gridWidths(grid.node.attrs.widths),n=widths.length;if(n<2)return;
+    const col=grid.cell%n,rest=widths.reduce((a,b,i)=>i===col?a:a+b,0);
+    const next=widths.map((w,i)=>i===col?v:w/rest*(100-v));
+    gridAttribute({widths:next.map(roundFr).join(' ')});
+  });
+  $('grid-equal').onclick=()=>{const grid=gridAt();if(grid)gridAttribute({widths:gridWidths(grid.node.attrs.widths).map(()=>1).join(' ')});};
+  numberControl('grid-gap',0,8,v=>gridAttribute({gap:Number(v.toFixed(2))}));
+  $('grid-valign').onchange=e=>{gridAttribute({valign:e.target.value});e.target.blur();};
+  $('grid-keep').onchange=e=>gridAttribute({keep:e.target.checked});
+  // Убрать сетку: содержимое ячеек по порядку встает в текст, картинки сохраняют размер на странице.
+  $('grid-unwrap').onclick=()=>{
+    const grid=gridAt();if(!grid)return;
+    const widths=gridWidths(grid.node.attrs.widths),total=widths.reduce((a,b)=>a+b,0),nodes=[];
+    grid.node.forEach((cell,offset,index)=>{
+      if(isEmptyCell(cell))return;
+      cell.forEach(child=>nodes.push(scaleImages(child,widths[index%widths.length]/total)));
+    });
+    const tr=view.state.tr.replaceWith(grid.pos,grid.pos+grid.node.nodeSize,nodes.length?nodes:schema.nodes.paragraph.create({id:uid()}));
+    finish(tr.setSelection(TextSelection.near(tr.doc.resolve(grid.pos+1))));
+  };
   $('typography-all').onclick=()=>{
     if(!view)return;
     const tr=retypeAll(view.state);

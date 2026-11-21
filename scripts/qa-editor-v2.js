@@ -702,6 +702,101 @@ try{
     await saved();await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
     pass('style italic and capitals can be removed and restored locally without touching the global style');
   }
+  {
+    // Сетка-контейнер: вставка, ячейки, настройки, раскладка выделенных рисунков с подписями, снятие сетки.
+    await page.evaluate(()=>window.scrollTo(0,0));
+    await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
+    await clickText('apiaries');
+    await page.locator('#insert-grid').click();
+    await page.waitForSelector('#book .layout-grid > .grid-cell + .grid-cell');
+    assert.equal(await page.locator('#grid-tools').isVisible(),true,'grid tools follow the cursor into a cell');
+    assert.equal(await page.evaluate(()=>document.querySelector('#apiaries').nextElementSibling.classList.contains('layout-grid')),true,'grid goes right after the current paragraph');
+    await page.keyboard.type('Левая ячейка');await page.keyboard.press('Tab');await page.keyboard.type('Правая ячейка');
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('#book .grid-cell')].map(c=>c.textContent)),['Левая ячейка','Правая ячейка']);
+    await number('grid-cols',3);await page.waitForFunction(()=>document.querySelectorAll('#book .grid-cell').length===3);
+    await number('grid-col-width',50);await number('grid-gap',1);
+    await page.locator('#grid-valign').selectOption('bottom');
+    await page.locator('#grid-keep').check();
+    await page.waitForFunction(()=>document.querySelector('#book .layout-grid').dataset.keep==='columns');
+    // Убрать колонку с содержимым нельзя, пустую — можно.
+    await number('grid-cols',2);await page.waitForFunction(()=>document.querySelectorAll('#book .grid-cell').length===2);
+    await number('grid-rows',2);await page.waitForFunction(()=>document.querySelectorAll('#book .grid-cell').length===4);
+    await number('grid-rows',1);await page.waitForFunction(()=>document.querySelectorAll('#book .grid-cell').length===2);
+    await number('grid-cols',1);
+    await page.waitForFunction(()=>/только когда ее ячейки пустые/.test(document.querySelector('#notice').textContent));
+    assert.equal(await page.locator('#book .grid-cell').count(),2,'non-empty column is kept');
+    await saved();
+    let html=(await page.evaluate(async()=>(await (await fetch('/api/book')).json()))).html;
+    assert.match(html,/<div class="layout-grid" id="b-[^"]+" data-valign="bottom" data-keep="columns" style="--grid-cols:[\d.]+fr [\d.]+fr;--grid-gap:1rem">/);
+    assert.match(html,/<div class="grid-cell" id="b-[^"]+"><p[^>]*>Левая ячейка<\/p><\/div>/);
+    const gridLayout=()=>page.evaluate(()=>{
+      const grid=document.querySelector('#book .layout-grid'),s=getComputedStyle(grid);
+      return {cols:s.gridTemplateColumns,gap:s.columnGap,align:s.alignItems,padding:s.padding,border:s.borderTopWidth,
+        cells:[...grid.children].map(c=>{const r=c.getBoundingClientRect();return [Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)];})};
+    });
+    const editorGrid=await gridLayout();
+    await page.screenshot({path:path.join(output,'grid-editor.png')});
+    await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+    await page.waitForSelector('#book .layout-grid');
+    const readerGrid=await gridLayout();
+    assert.equal(readerGrid.cells.length,2);assert.ok(readerGrid.cells[1][0]>readerGrid.cells[0][0],'cells stand side by side');
+    assert.equal(readerGrid.align,'end');assert.equal(readerGrid.padding,'0px');assert.equal(readerGrid.border,'0px');
+    for(let i=0;i<2;i++)for(let k=0;k<4;k++)assert.ok(Math.abs(readerGrid.cells[i][k]-editorGrid.cells[i][k])<=1,JSON.stringify({readerGrid,editorGrid}));
+    pass('grid container: insert, Tab between cells, columns/rows/width/gap/alignment, same geometry in reader and editor');
+    // Узкий экран: ячейки складываются, если не включено «Колонки на телефоне».
+    await page.setViewportSize({width:600,height:1000});
+    assert.equal((await gridLayout()).cells[1][0],(await gridLayout()).cells[1][0]);
+    assert.ok((await gridLayout()).cells[1][0]>(await gridLayout()).cells[0][0],'keep=columns keeps the columns on a phone');
+    await page.setViewportSize({width:1440,height:1100});
+
+    // Два рисунка с подписями: выделение → «Сетка», каждый рисунок со своей подписью встает в свою ячейку.
+    await page.keyboard.press('Control+e');await page.waitForSelector('#book.ProseMirror');
+    const caretAtEnd=async selector=>{
+      await page.evaluate(selector=>{
+        const el=[...document.querySelectorAll(selector)].at(-1),w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let last=null;while(w.nextNode())last=w.currentNode;
+        getSelection().collapse(last,last.length);
+      },selector);
+      await page.waitForTimeout(80);
+    };
+    await clickText('garden');await caretAtEnd('#garden');
+    for(const [n,caption] of [[1,'Рис. 3. Рабочая пчела'],[2,'Рис. 4. Трутень']]){
+      // Пустой абзац под картинку, под ним подпись; картинка загружается в пустой абзац.
+      await page.keyboard.press('Enter');await page.keyboard.press('Enter');
+      await page.keyboard.type(caption);await page.locator('#text-style').selectOption('caption');
+      await page.keyboard.press('ArrowUp');
+      await page.locator('#image-input').setInputFiles('data/books/bees/img/frontispiece.png');
+      await page.waitForFunction(n=>document.querySelectorAll('#garden ~ p > .image-shell').length>=n,n);
+      await page.locator('#book p.caption').last().click();await caretAtEnd('#book p.caption');
+    }
+    await page.evaluate(()=>{
+      const img=document.querySelector('#garden').nextElementSibling,last=[...document.querySelectorAll('#book p.caption')].at(-1);
+      const r=document.createRange();r.setStart(img,0);r.setEnd(last.firstChild,last.firstChild.length);
+      getSelection().removeAllRanges();getSelection().addRange(r);
+    });
+    await page.waitForTimeout(100);
+    await page.locator('#insert-grid').click();
+    await page.waitForFunction(()=>document.querySelectorAll('#garden + .layout-grid > .grid-cell').length===2);
+    const wrapped=await page.evaluate(()=>[...document.querySelectorAll('#garden + .layout-grid > .grid-cell')].map(c=>({blocks:c.children.length,text:c.textContent.replace(/\u00a0/g,' '),width:c.querySelector('.image-shell').style.width})));
+    assert.deepEqual(wrapped.map(c=>[c.blocks,c.text]),[[2,'Рис. 3. Рабочая пчела'],[2,'Рис. 4. Трутень']]);
+    assert.deepEqual(wrapped.map(c=>c.width),['90%','90%'],'image keeps its page size: 45% of the column = 90% of a half-width cell');
+    assert.equal(await page.evaluate(()=>document.querySelector('#garden + .layout-grid').dataset.valign),'bottom','captions line up at the bottom');
+    await page.screenshot({path:path.join(output,'grid-figures.png')});
+    // Убрать сетку: рисунки и подписи возвращаются в текст в прежнем порядке и размере.
+    await page.locator('#garden + .layout-grid .grid-cell p.caption').first().click();
+    await page.locator('#grid-unwrap').click();
+    await page.waitForFunction(()=>!document.querySelector('#garden + .layout-grid'));
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('#garden ~ p .image-shell')].map(s=>s.style.width)),['45%','45%']);
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('#book p.caption')].slice(-2).map(p=>p.textContent.replace(/\u00a0/g,' '))),['Рис. 3. Рабочая пчела','Рис. 4. Трутень']);
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(()=>document.querySelectorAll('#garden + .layout-grid > .grid-cell').length===2);
+    await saved();
+    html=(await page.evaluate(async()=>(await (await fetch('/api/book')).json()))).html;
+    assert.equal((html.match(/class="layout-grid"/g)||[]).length,2);
+    await page.keyboard.press('Escape');await page.waitForSelector('#book:not(.ProseMirror)');
+    await page.evaluate(()=>document.querySelector('#book #garden').scrollIntoView({block:'start'}));await page.waitForTimeout(300);
+    await page.screenshot({path:path.join(output,'grid-figures-reader.png')});
+    pass('grid wraps selected figures with their captions, keeps image size, unwraps and undoes');
+  }
   assert.deepEqual(errors,[]);pass('no uncaught browser errors');
   await writeFile(path.join(output,'results.json'),JSON.stringify({checks,errors,serverLogs:logs},null,2));
 }catch(e){

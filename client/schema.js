@@ -63,6 +63,28 @@ function figureDOM(node) {
   const style=a.width?(square?`width:${a.width}%`:`--image-width:${a.width}%`):null;
   return ['figure',{class:`image-figure${square?` wrap-${side}`:''}`,...(a.id?{id:a.id}:{}),'data-align':square?side:a.align,...(style?{style}:{})},0];
 }
+// Сетка-контейнер: невидимая раскладка в колонки (рисунки рядом, гравюра рядом с текстом).
+// Ширины колонок хранятся долями (fr) в --grid-cols, число колонок равно числу долей. Ячейки заполняются по строкам.
+// У сетки и ячеек нет рамок, фона и внутренних полей; расстояние между колонками и строками — --grid-gap.
+export const GRID_MAX_COLUMNS=4;
+const VALIGN=['top','center','bottom'];
+export function gridWidths(value) {
+  const list=String(value||'').trim().split(/\s+/).map(Number).filter(n=>Number.isFinite(n)&&n>0).slice(0,GRID_MAX_COLUMNS);
+  return list.length?list:[1,1];
+}
+const fr=n=>Number(n.toFixed(2));
+function gridAttrs(d) {
+  const cols=(d.style.getPropertyValue('--grid-cols')||'').trim();
+  const widths=/^\d+(?:\.\d+)?fr(?:\s+\d+(?:\.\d+)?fr)*$/.test(cols)?gridWidths(cols.replace(/fr/g,'')).map(fr).join(' '):'1 1';
+  const gap=parseFloat(d.style.getPropertyValue('--grid-gap'));
+  return {id:d.id||null,widths,gap:Number.isFinite(gap)&&gap>=0&&gap<=8?gap:2,
+    valign:VALIGN.includes(d.dataset.valign)?d.dataset.valign:'top',keep:d.dataset.keep==='columns'};
+}
+function gridDOM(node) {
+  const a=node.attrs, widths=gridWidths(a.widths);
+  return ['div',{class:'layout-grid',...(a.id?{id:a.id}:{}),...(a.valign!=='top'?{'data-valign':a.valign}:{}),...(a.keep?{'data-keep':'columns'}:{}),
+    style:`--grid-cols:${widths.map(w=>`${fr(w)}fr`).join(' ')};--grid-gap:${a.gap}rem`},0];
+}
 export const schema = new Schema({
   nodes: {
     doc:{content:'block+'},
@@ -91,6 +113,13 @@ export const schema = new Schema({
     figcaption:{content:'(paragraph | heading)+',defining:true,isolating:true,attrs:{id:{default:null}},
       parseDOM:[{tag:'figcaption',context:'figure/',getAttrs:d=>({id:d.id||null})}],
       toDOM:n=>['figcaption',{class:'image-caption',...(n.attrs.id?{id:n.attrs.id}:{})},0]},
+    grid:{group:'block',content:'grid_cell+',isolating:true,
+      attrs:{id:{default:null},widths:{default:'1 1'},gap:{default:2},valign:{default:'top'},keep:{default:false}},
+      parseDOM:[{tag:'div.layout-grid',getAttrs:gridAttrs}],toDOM:gridDOM},
+    // В ячейке — любые блоки книги, кроме вложенной сетки.
+    grid_cell:{content:'(paragraph | heading | figure | rule | blockquote | bullet_list | ordered_list)+',isolating:true,attrs:{id:{default:null}},
+      parseDOM:[{tag:'div.grid-cell',context:'grid/',getAttrs:d=>({id:d.id||null})}],
+      toDOM:n=>['div',{class:'grid-cell',...(n.attrs.id?{id:n.attrs.id}:{})},0]},
     image:{inline:true,group:'inline',atom:true,draggable:true,attrs:imageDefaults,parseDOM:[{tag:'img',getAttrs:imageAttrs}],toDOM:imageDOM},
     rule:{group:'block',atom:true,attrs:{kind:{default:'short'},id:{default:null}},parseDOM:[{tag:'hr',getAttrs:d=>({kind:d.classList.contains('divider-long')?'long':'short',id:d.id||null})}],toDOM:n=>['hr',{class:`divider-${n.attrs.kind}`,...(n.attrs.id?{id:n.attrs.id}:{})}]},
     blockquote:{group:'block',content:'block+',defining:true,parseDOM:[{tag:'blockquote'}],toDOM:()=>['blockquote',0]},

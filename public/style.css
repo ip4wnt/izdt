@@ -164,7 +164,9 @@ button img{width:1.75rem;height:1.75rem;display:block}button[hidden],[hidden]{di
 #save-status.error{color:#a92d20}
 #image-selection-label,.overlay-label{font-size:1.1rem;color:var(--muted);white-space:nowrap;padding-right:.4rem}
 .image-alt{width:20rem;max-width:32vw}
-.overlay-controls,.style-editor{color:var(--ink)}
+.overlay-controls,.grid-controls,.style-editor{color:var(--ink)}
+.grid-controls .grid-keep{display:inline-flex;align-items:center;gap:.35rem;color:var(--ink);font-size:1.1rem;white-space:nowrap}
+.grid-controls .grid-keep input{height:auto;width:auto}
 .style-editor{background:var(--paper);margin:0 -.9rem -.3rem;padding:.4rem .9rem}
 .editing #reading-stage{padding-bottom:var(--toolbar-height,16rem)}
 .editing .book{caret-color:var(--ink)}.editing .book:focus{outline:none}
@@ -221,3 +223,15 @@ dialog dl{display:grid;grid-template-columns:7rem 1fr;gap:.8rem}dialog dt{font-f
 .pick-range{width:9rem;accent-color:#76602d;margin:0}
 .pick-value{min-width:1.6rem;text-align:right;font-variant-numeric:tabular-nums}
 .pick-bar .crop-save{background:#76602d;color:#fff}
+/* Сетка-контейнер: невидимая раскладка в колонки. Без рамок, фона и полей; промежуток — --grid-gap. */
+.book .layout-grid{display:grid;grid-template-columns:var(--grid-cols,1fr 1fr);gap:var(--grid-gap,2rem);align-items:start;margin:0;padding:0;border:0;clear:both}
+.book .layout-grid[data-valign=center]{align-items:center}
+.book .layout-grid[data-valign=bottom]{align-items:end}
+.book .grid-cell{min-width:0;margin:0;padding:0;border:0}
+.book .grid-cell>:first-child{margin-top:0}
+.book .grid-cell>:last-child{margin-bottom:0}
+/* Направляющие видны только в редакторе: outline не занимает места, поэтому геометрия читалки и редактора совпадает. */
+.editing .book .layout-grid{outline:1px dashed rgba(166,155,121,.55);outline-offset:.35rem}
+.editing .book .grid-cell{outline:1px dashed rgba(166,155,121,.9);outline-offset:-1px}
+/* Узкий экран: ячейки встают в одну колонку в порядке чтения, если автор не попросил сохранять колонки. */
+@media(max-width:640px){.book .layout-grid:not([data-keep]){grid-template-columns:minmax(0,1fr)}}

@@ -89,3 +89,12 @@ test('картинка с подписью и обтеканием пережи�
   assert.equal(normalize(html).html,html);
   assert.doesNotMatch(normalize('<figure style="--image-width:url(x)">x</figure>').html,/image-width/);
 });
+test('layout grid survives sanitizer; unsafe grid values are dropped',()=>{
+  const grid='<div class="layout-grid" id="g" data-valign="bottom" data-keep="columns" style="--grid-cols:40fr 60fr;--grid-gap:1.5rem"><div class="grid-cell" id="c1"><p id="p1">A</p></div><div class="grid-cell" id="c2"><p id="p2">B</p></div></div>';
+  const {html}=normalize(grid);
+  assert.equal(html,grid);
+  assert.equal(normalize(html).html,html);
+  const bad=normalize('<div class="layout-grid" style="--grid-cols:url(x);--grid-gap:50rem;background:red" data-valign="x" onclick="evil()"><div class="grid-cell"><p>A</p></div></div>').html;
+  assert.doesNotMatch(bad,/url\(|50rem|background|onclick/);
+  assert.match(bad,/class="layout-grid"/);
+});

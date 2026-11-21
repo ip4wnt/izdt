@@ -46,6 +46,7 @@ export function pageHTML(book, base='') {
 <button id="add-image" title="Вставить изображение из файла" aria-label="Вставить изображение">${icon('image')}<span>Изображение</span></button>
 <button id="short-divider" title="Короткий разделитель" aria-label="Короткий разделитель">―<span>Короткая линия</span></button>
 <button id="long-divider" title="Длинный разделитель" aria-label="Длинный разделитель">──<span>Длинная линия</span></button>
+<button id="insert-grid" title="Сетка: невидимая раскладка в колонки. Если выделено несколько блоков (например, два рисунка с подписями), каждый встанет в свою ячейку" aria-label="Вставить сетку"><span class="glyph">▥</span><span>Сетка</span></button>
 <button id="typography-all" title="Расставить неразрывные пробелы во всей книге: после предлогов и союзов, между цифрами, перед тире" aria-label="Проверить типографику всей книги"><span class="glyph">a⎵b</span><span>Типографика</span></button></div>
 </div>
 <div id="image-tools" class="image-tools" hidden>
@@ -71,6 +72,17 @@ export function pageHTML(book, base='') {
 <label class="icon-field" title="Отступ сверху, % ширины блока"><span class="field-icon" aria-hidden="true">⇡</span><input id="overlay-y" aria-label="Отступ плашки сверху" type="number" min="0" max="300" step="1"></label>
 <label class="icon-field" title="Ширина плашки, % ширины блока"><span class="field-icon" aria-hidden="true">↔</span><input id="overlay-width" aria-label="Ширина плашки" type="number" min="10" max="100" step="1"></label>
 <button id="detach-overlay" title="Снять текст с картинки: абзацы встанут под ней обычным текстом">Снять текст с картинки</button>
+</div>
+<div id="grid-tools" class="ribbon-row grid-controls" hidden role="group" aria-label="Сетка">
+<span class="overlay-label">Сетка</span>
+<label class="icon-field" title="Колонки (1–4). Колонку можно убрать, только если ее ячейки пустые"><span class="field-icon" aria-hidden="true">⫴</span><input id="grid-cols" aria-label="Колонки сетки" type="number" min="1" max="4" step="1"></label>
+<label class="icon-field" title="Строки. Строку можно убрать, только если ее ячейки пустые"><span class="field-icon" aria-hidden="true">☰</span><input id="grid-rows" aria-label="Строки сетки" type="number" min="1" max="20" step="1"></label>
+<label class="icon-field" title="Ширина колонки с курсором, % ширины сетки; остальные колонки делят остаток в прежней пропорции"><span class="field-icon" aria-hidden="true">↔</span><input id="grid-col-width" aria-label="Ширина колонки" type="number" min="10" max="90" step="1"></label>
+<button id="grid-equal" title="Сделать колонки одинаковой ширины">Поровну</button>
+<label class="icon-field" title="Промежуток между колонками и строками, rem"><span class="field-icon" aria-hidden="true">⇹</span><input id="grid-gap" aria-label="Промежуток сетки" type="number" min="0" max="8" step=".5"></label>
+<select id="grid-valign" title="Выравнивание содержимого ячеек по высоте" aria-label="Выравнивание ячеек"><option value="top">Сверху</option><option value="center">По центру</option><option value="bottom">По нижнему краю</option></select>
+<label class="grid-keep" title="На узком экране (до 640 px) ячейки обычно встают в одну колонку. Включите, чтобы колонки сохранялись, например для пары небольших рисунков"><input id="grid-keep" type="checkbox">Колонки на телефоне</label>
+<button id="grid-unwrap" title="Убрать сетку: содержимое ячеек встанет в текст по порядку">Убрать сетку</button>
 </div>
 <div id="style-editor" class="ribbon-row style-editor" hidden role="group" aria-label="Настройка стиля">
 <span class="overlay-label">Настройка стиля</span>

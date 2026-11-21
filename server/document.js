@@ -12,16 +12,17 @@ export function normalize(html) {
     allowedTags: ['div','section','header','h1','h2','h3','p','span','em','i','strong','b','u','s','br','hr','img','figure','figcaption','blockquote','ul','ol','li','a'],
     allowedAttributes: {
       '*':['id','class','style','data-style','data-typo'],
-      img:['src','alt','width','height','data-align'], figure:['data-align'], a:['href','title']
+      img:['src','alt','width','height','data-align'], figure:['data-align'], div:['data-valign','data-keep'], a:['href','title']
     },
-    allowedClasses: {'*':['opening','frontispiece','opening-titles','paragraph','small','signature','divider-short','divider-long','wrap-left','wrap-right','wrap-block','wrap-inline','book-image','image-figure','figure-image','image-overlay','image-caption','caption']},
+    allowedClasses: {'*':['opening','frontispiece','opening-titles','paragraph','small','signature','divider-short','divider-long','wrap-left','wrap-right','wrap-block','wrap-inline','book-image','image-figure','figure-image','image-overlay','image-caption','caption','layout-grid','grid-cell']},
     allowedStyles: {'*':{
       'font-size':rem, 'line-height':[/^\d(?:\.\d{1,4})?$/, ...rem],
       'text-indent':rem, 'font-family':[/^["']?(?:TT Marxiana|Old Standard TT|Akzidenz-Grotesk Pro|Roboto Condensed|Georgia|Arial|serif|sans-serif)["']?$/],
       'text-align':[/^(left|right|center|justify)$/], 'font-style':[/^(normal|italic)$/], 'text-transform':[/^(none|uppercase)$/],
       'font-weight':[/^(normal|bold|400|700)$/], 'letter-spacing':[/^(?:0|0?\.\d{1,3}|1(?:\.0{1,3})?)em$/], 'width':[/^(?:[1-9]\d?(?:\.\d{1,2})?|100)%$/],
       'margin-left':[/^(?:\d{1,2}|100)%$/], 'margin-top':[/^(?:\d{1,2}|[12]\d{2}|300)%$/],
-      '--image-width':[/^(?:[1-9]\d?(?:\.\d{1,2})?|100)%$/]
+      '--image-width':[/^(?:[1-9]\d?(?:\.\d{1,2})?|100)%$/],
+      '--grid-cols':[/^\d{1,3}(?:\.\d{1,2})?fr(?: \d{1,3}(?:\.\d{1,2})?fr){0,3}$/], '--grid-gap':[/^(?:[0-7](?:\.\d{1,2})?|8)rem$/]
     }},
     allowedSchemes:['https','http','mailto'],
     transformTags: {
